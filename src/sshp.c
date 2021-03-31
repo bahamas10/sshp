@@ -32,6 +32,9 @@
 #define COLOR_WHITE "\033[0;37m"
 #define COLOR_RESET "\033[0m"
 
+// epoll max events
+#define EPOLL_MAX_EVENTS 10
+
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
 	if (opts.debug) { \
@@ -225,6 +228,42 @@ monotonic_time_ms()
 }
 
 /*
+ * Thread to manage subprocess execution
+ */
+void *
+thread_subprocess_execution_manager()
+{
+	printf("in thread_subprocess_execution_manager\n");
+	return NULL;
+}
+
+/*
+ * Thread to manage subprocess stdio
+ */
+void *
+thread_subprocess_stdio_manager()
+{
+	//struct epoll_event event;
+	struct epoll_event events[EPOLL_MAX_EVENTS];
+
+	printf("in thread_subprocess_stdio_manager\n");
+
+	while (true) {
+		// XXX -1? probably should use timeout?
+		printf("called epoll_wait\n");
+		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS, 3000);
+		printf("epoll_wait returned - got %d events\n", num_events);
+		if (num_events == -1) {
+			err(3, "epoll_wait");
+		}
+		for (int i = 0; i < num_events; i++) {
+			printf("looking at event %d\n", i);
+		}
+	}
+	return NULL;
+}
+
+/*
  * Parse the hosts file and create the Host structs
  */
 static void
@@ -372,6 +411,8 @@ main(int argc, char **argv)
 	long delta;
 	long end_time;
 	long start_time;
+	pthread_t subprocess_execution_manager;
+	pthread_t subprocess_stdio_manager;
 
 	// record start time
 	start_time = monotonic_time_ms();
@@ -464,7 +505,23 @@ main(int argc, char **argv)
 		    colors.value, opts.max_jobs, colors.reset);
 	}
 
-	// do work here
+	// create both threads
+	if (pthread_create(&subprocess_stdio_manager, NULL,
+	    thread_subprocess_stdio_manager, NULL) != 0) {
+		err(3, "pthread_create subprocess_stdio_manager");
+	}
+	if (pthread_create(&subprocess_execution_manager, NULL,
+	    thread_subprocess_execution_manager, NULL) != 0) {
+		err(3, "pthread_create subprocess_execution_manager");
+	}
+
+	// block on both threads
+	if (pthread_join(subprocess_stdio_manager, NULL) != 0) {
+		err(3, "pthread_join subprocess_stdio_manager");
+	}
+	if (pthread_join(subprocess_execution_manager, NULL) != 0) {
+		err(3, "pthread_join subprocess_execution_manager");
+	}
 
 	// tidy up
 	close(epoll_fd);
