@@ -63,6 +63,9 @@ static Host *hosts = NULL;
 // Command to execute
 static char **command = {NULL};
 
+// Epoll instance
+int epoll_fd;
+
 /*
  * A struct that represents the global state of this program.  This is used
  * mainly to synhcronize data between the 2 threads.
@@ -133,50 +136,6 @@ static struct colors {
 } colors;
 
 /*
- * Wrapper for malloc that takes an error message as the second argument and
- * exits on failure.
- */
-static void*
-safe_malloc(size_t size, const char *msg)
-{
-	void *ptr = malloc(size);
-	if (ptr == NULL) {
-		err(3, "malloc %s", msg);
-	}
-	return ptr;
-}
-
-/*
- * Replace the first occurence of '\n' with '\0' in a string.
- */
-static bool
-trim_newline(char *s)
-{
-	for (int i = 0; s[i] != '\0'; i++) {
-		if (s[i] == '\n') {
-			s[i] = '\0';
-			return true;
-		}
-	}
-	return false;
-}
-
-/*
- * Get the current monotonic time in ms
- */
-static long
-monotonic_time_ms()
-{
-	struct timespec t;
-
-	if (clock_gettime(CLOCK_MONOTONIC, &t) == -1) {
-		err(3, "clock_gettime");
-	}
-
-	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
-}
-
-/*
  * Print the usages message to the given filestream
  */
 static void
@@ -219,6 +178,50 @@ print_usage(FILE *s)
 		"  -p, --port        the ssh port\n"
 		"  -y, --tty         allocate a pseudo-tty for the ssh session\n"
 	);
+}
+
+/*
+ * Wrapper for malloc that takes an error message as the second argument and
+ * exits on failure.
+ */
+static void*
+safe_malloc(size_t size, const char *msg)
+{
+	void *ptr = malloc(size);
+	if (ptr == NULL) {
+		err(3, "malloc %s", msg);
+	}
+	return ptr;
+}
+
+/*
+ * Replace the first occurence of '\n' with '\0' in a string.
+ */
+static bool
+trim_newline(char *s)
+{
+	for (int i = 0; s[i] != '\0'; i++) {
+		if (s[i] == '\n') {
+			s[i] = '\0';
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * Get the current monotonic time in ms
+ */
+static long
+monotonic_time_ms()
+{
+	struct timespec t;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &t) == -1) {
+		err(3, "clock_gettime");
+	}
+
+	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
 }
 
 /*
@@ -370,6 +373,9 @@ main(int argc, char **argv)
 	long end_time;
 	long start_time;
 
+	// record start time
+	start_time = monotonic_time_ms();
+
 	// initalize options
 	opts.anonymous = false;
 	opts.color = NULL;
@@ -419,9 +425,6 @@ main(int argc, char **argv)
 	}
 	assert(hosts_file != NULL);
 
-	// record start time
-	start_time = monotonic_time_ms();
-
 	// read in hosts and create structure for each one
 	parse_hosts(hosts_file);
 	fclose(hosts_file);
@@ -431,7 +434,13 @@ main(int argc, char **argv)
 		errx(2, "no hosts specified");
 	}
 
-	// print optional debug output
+	// create shared epoll instance
+	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+	if (epoll_fd == -1) {
+		err(3, "epoll_create1");
+	}
+
+	// print debug output
 	if (opts.debug) {
 		// print hosts
 		DEBUG("hosts (%s%d%s): [ ",
@@ -456,6 +465,9 @@ main(int argc, char **argv)
 	}
 
 	// do work here
+
+	// tidy up
+	close(epoll_fd);
 
 	// get end time and calculate time taken
 	end_time = monotonic_time_ms();
