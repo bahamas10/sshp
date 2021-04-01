@@ -19,7 +19,18 @@
 #include <time.h>
 #include <unistd.h>
 
+// version
 #define SSHP_VERSION "v0.0.0"
+
+// epoll max events
+#define EPOLL_MAX_EVENTS 10
+
+// maximum number of arguments for a child process
+#define MAX_ARGS 256
+
+// pipe ends
+#define READ_END 0
+#define WRITE_END 1
 
 // ANSI color codes
 #define COLOR_BLACK "\033[0;30m"
@@ -31,9 +42,6 @@
 #define COLOR_CYAN "\033[0;36m"
 #define COLOR_WHITE "\033[0;37m"
 #define COLOR_RESET "\033[0m"
-
-// epoll max events
-#define EPOLL_MAX_EVENTS 10
 
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
@@ -55,16 +63,20 @@ enum SSHPMode {
 /*
  * A struct that represents a single host (as a linked-list)
  */
-typedef struct Host {
+typedef struct host {
 	char *name;
-	struct Host *next;
+	pid_t pid;
+	struct host *next;
 } Host;
 
 // Linked-list of Hosts
 static Host *hosts = NULL;
 
 // Command to execute
-static char **command = {NULL};
+static char **remote_command = {NULL};
+
+// Base SSH Command
+static char *base_ssh_command[MAX_ARGS] = {NULL};
 
 // Epoll instance
 int epoll_fd;
@@ -120,7 +132,7 @@ static struct opts {
 	int mode;
 	bool dry_run;
 	bool no_strict;
-	int port;
+	char *port;
 	bool quiet;
 	bool silent;
 	bool trim;
@@ -187,7 +199,7 @@ print_usage(FILE *s)
  * Wrapper for malloc that takes an error message as the second argument and
  * exits on failure.
  */
-static void*
+static void *
 safe_malloc(size_t size, const char *msg)
 {
 	void *ptr = malloc(size);
@@ -195,6 +207,20 @@ safe_malloc(size_t size, const char *msg)
 		err(3, "malloc %s", msg);
 	}
 	return ptr;
+}
+
+static void
+push_argument(char *s)
+{
+	static int idx = 0;
+
+	if (idx >= MAX_ARGS - 2) {
+		errx(2, "too many command arguments");
+	}
+
+	base_ssh_command[idx] = s;
+
+	idx++;
 }
 
 /*
@@ -233,7 +259,82 @@ monotonic_time_ms()
 void *
 thread_subprocess_execution_manager()
 {
+	Host *cur_host = hosts;
+
 	printf("in thread_subprocess_execution_manager\n");
+
+	while (cur_host != NULL) {
+		int idx = 0;
+		char *command[MAX_ARGS] = {NULL};
+		char *name_array[] = {cur_host->name, NULL};
+		pid_t pid;
+		int fd[2];
+
+		/*
+		 * construct SSH command like:
+		 * base_ssh_command + host name + remote_command
+		 * as a null terminated array called "command"
+		 */
+		char **items_arr[] = {
+			base_ssh_command,
+			name_array,
+			remote_command,
+			NULL
+		};
+		char ***items = items_arr;
+		while (*items != NULL) {
+			char **item = *items;
+			while (*item != NULL) {
+				char *arg = *item;
+				printf("command[%d] = '%s'\n", idx, arg);
+				command[idx++] = arg;
+				if (idx >= MAX_ARGS) {
+					errx(2, "too many arguments (<= %d)", MAX_ARGS);
+				}
+
+				item++;
+			}
+
+			items++;
+		}
+		assert(idx < MAX_ARGS);
+		assert(command[MAX_ARGS - 1] == NULL);
+
+		printf("fork+exec %s\n", cur_host->name);
+
+		// create the stdio pipe
+		if (pipe(fd) == -1) {
+			err(3, "pipe");
+		}
+
+		// fork the process
+		pid = fork();
+		if (pid == -1) {
+			err(3, "fork");
+		}
+
+		if (pid == 0) {
+			// in child
+			close(fd[READ_END]);
+			if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1) {
+				err(3, "dup2 stdout");
+			}
+
+			execvp(command[0], command);
+			err(3, "exec");
+		}
+
+		// in parent
+		cur_host->pid = pid;
+
+
+		/*
+		if (cur_host != NULL) {
+		}
+		*/
+		cur_host = cur_host->next;
+	}
+
 	return NULL;
 }
 
@@ -252,14 +353,18 @@ thread_subprocess_stdio_manager()
 		// XXX -1? probably should use timeout?
 		printf("called epoll_wait\n");
 		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS, 3000);
+
 		printf("epoll_wait returned - got %d events\n", num_events);
+
 		if (num_events == -1) {
 			err(3, "epoll_wait");
 		}
+
 		for (int i = 0; i < num_events; i++) {
 			printf("looking at event %d\n", i);
 		}
 	}
+
 	return NULL;
 }
 
@@ -286,16 +391,19 @@ parse_hosts(FILE *f)
 			goto next;
 		}
 
-		host = safe_malloc(sizeof(Host), "Host");
+		host = safe_malloc(sizeof (Host), "Host");
 
-		// remove the ending newline - if a newline is not present the
-		// line is too long
+		/*
+		 * remove the ending newline - if a newline is not present the
+		 * line is too long
+		 */
 		if (!trim_newline(hostname)) {
 			errx(2, "hosts file line %d too long (>= %d chars)\n%s",
 			    lineno, HOST_NAME_MAX, hostname);
 		}
 
 		host->name = strdup(hostname);
+		host->pid = -1;
 		host->next = NULL;
 
 		if (hosts == NULL) {
@@ -345,7 +453,7 @@ parse_arguments(int argc, char **argv)
 		case 'm': opts.max_jobs = atoi(optarg); break;
 		case 'n': opts.dry_run = true; break;
 		case 'N': opts.no_strict = true; break;
-		case 'p': opts.port = atoi(optarg); break;
+		case 'p': opts.port = optarg; break;
 		case 'q': opts.quiet = true; break;
 		case 's': opts.silent = true; break;
 		case 't': opts.trim = true; break;
@@ -398,7 +506,7 @@ parse_arguments(int argc, char **argv)
 	}
 
 	// save the remaining arguments as the command
-	command = argv;
+	remote_command = argv;
 }
 
 /*
@@ -431,7 +539,7 @@ main(int argc, char **argv)
 	opts.mode = ModeLineByLine;
 	opts.dry_run = false;
 	opts.no_strict = false;
-	opts.port = -1;
+	opts.port = NULL;
 	opts.quiet = false;
 	opts.silent = false;
 	opts.trim = false;
@@ -456,6 +564,18 @@ main(int argc, char **argv)
 
 	// handle CLI options
 	parse_arguments(argc, argv);
+
+	// initalized the base ssh command
+	push_argument("echo");
+	push_argument("ssh");
+	if (opts.login != NULL) {
+		push_argument("-l");
+		push_argument(opts.login);
+	}
+	if (opts.port != NULL) {
+		push_argument("-p");
+		push_argument(opts.port);
+	}
 
 	// figure out where to read hosts from (stdin or a file)
 	if (opts.file != NULL && strcmp(opts.file, "-") != 0) {
@@ -483,6 +603,14 @@ main(int argc, char **argv)
 
 	// print debug output
 	if (opts.debug) {
+		// print base command
+		DEBUG("ssh command: [ ");
+		for (char **arg = base_ssh_command; *arg != NULL; arg++) {
+			printf("%s'%s'%s ",
+			    colors.value, *arg, colors.reset);
+		}
+		printf("]\n");
+
 		// print hosts
 		DEBUG("hosts (%s%d%s): [ ",
 		    colors.important, global_state.num_hosts, colors.reset);
@@ -493,8 +621,8 @@ main(int argc, char **argv)
 		printf("]\n");
 
 		// print command
-		DEBUG("command: [ ");
-		for (char **arg = command; *arg != NULL; arg++) {
+		DEBUG("remote command: [ ");
+		for (char **arg = remote_command; *arg != NULL; arg++) {
 			printf("%s'%s'%s ",
 			    colors.value, *arg, colors.reset);
 		}
