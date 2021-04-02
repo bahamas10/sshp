@@ -52,22 +52,40 @@
 }
 
 /*
- * sshp modes of execution
+ * sshp modes of execution.
  */
 enum SSHPMode {
-	ModeLineByLine,
-	ModeGroup,
-	ModeJoin
+	MODE_LINE_BY_LINE = 0,
+	MODE_GROUP,
+	MODE_JOIN
 };
 
 /*
- * A struct that represents a single host (as a linked-list)
+ * A struct that represents a single host (as a linked-list).
  */
 typedef struct host {
 	char *name;
 	pid_t pid;
+	int stdout_fd;
+	int stderr_fd;
 	struct host *next;
 } Host;
+
+/*
+ * Pipe types.
+ */
+enum PipeType {
+	PIPE_STDOUT = 1,
+	PIPE_STDERR
+};
+
+/*
+ * Wrapper struct for use when an fd sees an event.
+ */
+typedef struct fd_event {
+	Host *host;
+	enum PipeType type;
+} FdEvent;
 
 // Linked-list of Hosts
 static Host *hosts = NULL;
@@ -209,6 +227,9 @@ safe_malloc(size_t size, const char *msg)
 	return ptr;
 }
 
+/*
+ * Push an argument to the ssh base command and bounds check it.
+ */
 static void
 push_argument(char *s)
 {
@@ -263,12 +284,14 @@ thread_subprocess_execution_manager()
 
 	printf("in thread_subprocess_execution_manager\n");
 
+	// loop over all hosts
 	while (cur_host != NULL) {
 		int idx = 0;
 		char *command[MAX_ARGS] = {NULL};
 		char *name_array[] = {cur_host->name, NULL};
 		pid_t pid;
-		int fd[2];
+		int stdout_fd[2];
+		int stderr_fd[2];
 
 		/*
 		 * construct SSH command like:
@@ -302,8 +325,11 @@ thread_subprocess_execution_manager()
 
 		printf("fork+exec %s\n", cur_host->name);
 
-		// create the stdio pipe
-		if (pipe(fd) == -1) {
+		// create the stdio pipes
+		if (pipe(stdout_fd) == -1) {
+			err(3, "pipe");
+		}
+		if (pipe(stderr_fd) == -1) {
 			err(3, "pipe");
 		}
 
@@ -313,11 +339,15 @@ thread_subprocess_execution_manager()
 			err(3, "fork");
 		}
 
+		// in child
 		if (pid == 0) {
-			// in child
-			close(fd[READ_END]);
-			if (dup2(fd[WRITE_END], STDOUT_FILENO) == -1) {
+			close(stdout_fd[READ_END]);
+			close(stderr_fd[READ_END]);
+			if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
 				err(3, "dup2 stdout");
+			}
+			if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
+				err(3, "dup2 stderr");
 			}
 
 			execvp(command[0], command);
@@ -325,8 +355,33 @@ thread_subprocess_execution_manager()
 		}
 
 		// in parent
+		close(stdout_fd[WRITE_END]);
+		close(stderr_fd[WRITE_END]);
 		cur_host->pid = pid;
+		cur_host->stdout_fd = stdout_fd[READ_END];
+		cur_host->stderr_fd = stderr_fd[READ_END];
 
+		enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
+		int count = sizeof (types) / sizeof (types[0]);
+		for (int i = 0; i < count; i++) {
+			// create an epoll event
+			struct epoll_event ev;
+			FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
+
+			ev.events = EPOLLIN;
+			ev.data.ptr = fdev;
+
+			fdev->host = cur_host;
+			fdev->type = types[i];
+
+			int fd = fdev->type == PIPE_STDOUT ? fdev->host->stdout_fd : fdev->host->stderr_fd;
+
+			int ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+
+			if (ret == -1) {
+				err(3, "epoll_ctl add");
+			}
+		}
 
 		/*
 		if (cur_host != NULL) {
@@ -349,6 +404,9 @@ thread_subprocess_stdio_manager()
 
 	printf("in thread_subprocess_stdio_manager\n");
 
+	char *last_host_printed = NULL;
+	char buf[BUFSIZ];
+
 	while (true) {
 		// XXX -1? probably should use timeout?
 		printf("called epoll_wait\n");
@@ -361,7 +419,40 @@ thread_subprocess_stdio_manager()
 		}
 
 		for (int i = 0; i < num_events; i++) {
+			struct epoll_event ev = events[i];
+			FdEvent *fdev = ev.data.ptr;
+			//Host *host = fdev->host;
 			printf("looking at event %d\n", i);
+			printf("fdev->type = %d\n", fdev->type);
+
+			int fd = fdev->type == PIPE_STDOUT ?
+			    fdev->host->stdout_fd : fdev->host->stderr_fd;
+
+			if (last_host_printed == NULL || last_host_printed != fdev->host->name) {
+				printf("[%s%s%s]\n", colors.log_id, fdev->host->name, colors.reset);
+				last_host_printed = fdev->host->name;
+			}
+
+			while (true) {
+				printf("trying to read fd %d\n", fd);
+				int bytes = read(fd, buf, BUFSIZ);
+				if (bytes < 0) {
+					err(3, "read failed");
+				} else if (bytes == 0) {
+					// done reading!
+					printf("fd %d done\n", fd);
+					epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+					close(fd);
+					break;
+				} else {
+					char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
+					printf("%s", color);
+					if (write(STDOUT_FILENO, buf, bytes) < bytes) {
+						err(3, "write failed");
+					}
+					printf("%s", colors.reset);
+				}
+			}
 		}
 	}
 
@@ -402,9 +493,13 @@ parse_hosts(FILE *f)
 			    lineno, HOST_NAME_MAX, hostname);
 		}
 
-		host->name = strdup(hostname);
 		host->pid = -1;
 		host->next = NULL;
+		host->name = strdup(hostname);
+
+		if (host->name == NULL) {
+			err(3, "strdup hostname %s", hostname);
+		}
 
 		if (hosts == NULL) {
 			hosts = host;
@@ -482,9 +577,9 @@ parse_arguments(int argc, char **argv)
 	// set current sshp mode
 	assert(!(opts.join && opts.group));
 	if (opts.join) {
-		opts.mode = ModeJoin;
+		opts.mode = MODE_JOIN;
 	} else if (opts.group) {
-		opts.mode = ModeGroup;
+		opts.mode = MODE_GROUP;
 	}
 
 	// check if colorized output should be enabled
@@ -536,7 +631,7 @@ main(int argc, char **argv)
 	opts.join = false;
 	opts.login = NULL;
 	opts.max_jobs = 50;
-	opts.mode = ModeLineByLine;
+	opts.mode = MODE_LINE_BY_LINE;
 	opts.dry_run = false;
 	opts.no_strict = false;
 	opts.port = NULL;
@@ -632,6 +727,9 @@ main(int argc, char **argv)
 		DEBUG("max-jobs: %s%d%s\n",
 		    colors.value, opts.max_jobs, colors.reset);
 	}
+
+	// disable stdout printf buffering
+	setvbuf(stdout, NULL, _IONBF, 0);
 
 	// create both threads
 	if (pthread_create(&subprocess_stdio_manager, NULL,
