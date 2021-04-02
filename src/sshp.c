@@ -8,6 +8,8 @@
 
 #include <assert.h>
 #include <err.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
@@ -274,6 +276,143 @@ monotonic_time_ms()
 	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
 }
 
+int
+fdev_get_fd(FdEvent *fdev)
+{
+	assert(fdev != NULL);
+
+	switch (fdev->type) {
+		case PIPE_STDOUT: return fdev->host->stdout_fd;
+		case PIPE_STDERR: return fdev->host->stderr_fd;
+		default: errx(3, "unknown fdev->type '%d'", fdev->type);
+	}
+}
+
+/*
+ * Fork and exec a subprocess
+ */
+void
+spawn_child_process(Host *host)
+{
+	assert(host != NULL);
+	assert(host->name != NULL);
+
+	int idx = 0;
+	char *command[MAX_ARGS] = {NULL};
+	char *name_array[] = {host->name, NULL};
+	pid_t pid;
+	int stdout_fd[2];
+	int stderr_fd[2];
+
+
+	/*
+	 * construct SSH command like:
+	 * base_ssh_command + host name + remote_command
+	 * as a null terminated array called "command"
+	 */
+	char **items_arr[] = {
+		base_ssh_command,
+		name_array,
+		remote_command,
+		NULL
+	};
+	char ***items = items_arr;
+	while (*items != NULL) {
+		char **item = *items;
+		while (*item != NULL) {
+			char *arg = *item;
+			printf("command[%d] = '%s'\n", idx, arg);
+			command[idx++] = arg;
+			if (idx >= MAX_ARGS) {
+				errx(2, "too many arguments (<= %d)", MAX_ARGS);
+			}
+
+			item++;
+		}
+
+		items++;
+	}
+	assert(idx < MAX_ARGS);
+	assert(command[MAX_ARGS - 1] == NULL);
+
+	printf("fork+exec %s\n", host->name);
+
+	// create the stdio pipes
+	if (pipe(stdout_fd) == -1) {
+		err(3, "pipe");
+	}
+	if (pipe(stderr_fd) == -1) {
+		err(3, "pipe");
+	}
+
+	// fork the process
+	pid = fork();
+	if (pid == -1) {
+		err(3, "fork");
+	}
+
+	// in child
+	if (pid == 0) {
+		close(stdout_fd[READ_END]);
+		close(stderr_fd[READ_END]);
+		if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
+			err(3, "dup2 stdout");
+		}
+		if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
+			err(3, "dup2 stderr");
+		}
+
+		execvp(command[0], command);
+		err(3, "exec");
+	}
+
+	// in parent
+	// close unused fds
+	close(stdout_fd[WRITE_END]);
+	close(stderr_fd[WRITE_END]);
+
+	// save data
+	host->pid = pid;
+	host->stdout_fd = stdout_fd[READ_END];
+	host->stderr_fd = stderr_fd[READ_END];
+
+	// set read pipes nonblocking
+	if (fcntl(host->stdout_fd, F_SETFL, O_NONBLOCK) == -1) {
+		err(3, "set nonblocking");
+	}
+	if (fcntl(host->stderr_fd, F_SETFL, O_NONBLOCK) == -1) {
+		err(3, "set nonblocking");
+	}
+}
+
+void
+register_child_process_fds(Host *host)
+{
+	enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
+	int count = sizeof (types) / sizeof (types[0]);
+
+	assert(host->stdout_fd != -1);
+	assert(host->stderr_fd != -1);
+
+	for (int i = 0; i < count; i++) {
+		// create an epoll event
+		struct epoll_event ev;
+		FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
+
+		ev.events = EPOLLIN;
+		ev.data.ptr = fdev;
+
+		fdev->host = host;
+		fdev->type = types[i];
+
+		int fd = fdev_get_fd(fdev);
+
+		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+			err(3, "epoll_ctl add");
+		}
+	}
+}
+
 /*
  * Thread to manage subprocess execution
  */
@@ -286,111 +425,52 @@ thread_subprocess_execution_manager()
 
 	// loop over all hosts
 	while (cur_host != NULL) {
-		int idx = 0;
-		char *command[MAX_ARGS] = {NULL};
-		char *name_array[] = {cur_host->name, NULL};
-		pid_t pid;
-		int stdout_fd[2];
-		int stderr_fd[2];
+		spawn_child_process(cur_host);
+		register_child_process_fds(cur_host);
 
-		/*
-		 * construct SSH command like:
-		 * base_ssh_command + host name + remote_command
-		 * as a null terminated array called "command"
-		 */
-		char **items_arr[] = {
-			base_ssh_command,
-			name_array,
-			remote_command,
-			NULL
-		};
-		char ***items = items_arr;
-		while (*items != NULL) {
-			char **item = *items;
-			while (*item != NULL) {
-				char *arg = *item;
-				printf("command[%d] = '%s'\n", idx, arg);
-				command[idx++] = arg;
-				if (idx >= MAX_ARGS) {
-					errx(2, "too many arguments (<= %d)", MAX_ARGS);
-				}
-
-				item++;
-			}
-
-			items++;
-		}
-		assert(idx < MAX_ARGS);
-		assert(command[MAX_ARGS - 1] == NULL);
-
-		printf("fork+exec %s\n", cur_host->name);
-
-		// create the stdio pipes
-		if (pipe(stdout_fd) == -1) {
-			err(3, "pipe");
-		}
-		if (pipe(stderr_fd) == -1) {
-			err(3, "pipe");
-		}
-
-		// fork the process
-		pid = fork();
-		if (pid == -1) {
-			err(3, "fork");
-		}
-
-		// in child
-		if (pid == 0) {
-			close(stdout_fd[READ_END]);
-			close(stderr_fd[READ_END]);
-			if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
-				err(3, "dup2 stdout");
-			}
-			if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
-				err(3, "dup2 stderr");
-			}
-
-			execvp(command[0], command);
-			err(3, "exec");
-		}
-
-		// in parent
-		close(stdout_fd[WRITE_END]);
-		close(stderr_fd[WRITE_END]);
-		cur_host->pid = pid;
-		cur_host->stdout_fd = stdout_fd[READ_END];
-		cur_host->stderr_fd = stderr_fd[READ_END];
-
-		enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
-		int count = sizeof (types) / sizeof (types[0]);
-		for (int i = 0; i < count; i++) {
-			// create an epoll event
-			struct epoll_event ev;
-			FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
-
-			ev.events = EPOLLIN;
-			ev.data.ptr = fdev;
-
-			fdev->host = cur_host;
-			fdev->type = types[i];
-
-			int fd = fdev->type == PIPE_STDOUT ? fdev->host->stdout_fd : fdev->host->stderr_fd;
-
-			int ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
-
-			if (ret == -1) {
-				err(3, "epoll_ctl add");
-			}
-		}
-
-		/*
-		if (cur_host != NULL) {
-		}
-		*/
 		cur_host = cur_host->next;
 	}
 
 	return NULL;
+}
+
+/*
+ * Read data from FdEvent until end or would-block
+ */
+bool
+read_active_fd(FdEvent *fdev)
+{
+	char buf[BUFSIZ];
+	int fd = fdev_get_fd(fdev);
+
+	printf("trying to read fd %d\n", fd);
+	int bytes = read(fd, buf, BUFSIZ);
+
+	// read error
+	if (bytes < 0) {
+		if (errno == EWOULDBLOCK) {
+			printf("would block\n");
+			return false;
+		}
+		err(3, "read failed");
+	}
+
+	// done reading!
+	if (bytes == 0) {
+		printf("fd %d done\n", fd);
+		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+		close(fd);
+		return false;
+	}
+	char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
+
+	printf("%s", color);
+	if (write(STDOUT_FILENO, buf, bytes) < bytes) {
+		err(3, "write failed");
+	}
+	printf("%s", colors.reset);
+
+	return true;
 }
 
 /*
@@ -405,7 +485,6 @@ thread_subprocess_stdio_manager()
 	printf("in thread_subprocess_stdio_manager\n");
 
 	char *last_host_printed = NULL;
-	char buf[BUFSIZ];
 
 	while (true) {
 		// XXX -1? probably should use timeout?
@@ -425,34 +504,12 @@ thread_subprocess_stdio_manager()
 			printf("looking at event %d\n", i);
 			printf("fdev->type = %d\n", fdev->type);
 
-			int fd = fdev->type == PIPE_STDOUT ?
-			    fdev->host->stdout_fd : fdev->host->stderr_fd;
-
 			if (last_host_printed == NULL || last_host_printed != fdev->host->name) {
 				printf("[%s%s%s]\n", colors.log_id, fdev->host->name, colors.reset);
 				last_host_printed = fdev->host->name;
 			}
 
-			while (true) {
-				printf("trying to read fd %d\n", fd);
-				int bytes = read(fd, buf, BUFSIZ);
-				if (bytes < 0) {
-					err(3, "read failed");
-				} else if (bytes == 0) {
-					// done reading!
-					printf("fd %d done\n", fd);
-					epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-					close(fd);
-					break;
-				} else {
-					char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
-					printf("%s", color);
-					if (write(STDOUT_FILENO, buf, bytes) < bytes) {
-						err(3, "write failed");
-					}
-					printf("%s", colors.reset);
-				}
-			}
+			while (read_active_fd(fdev));
 		}
 	}
 
@@ -493,9 +550,11 @@ parse_hosts(FILE *f)
 			    lineno, HOST_NAME_MAX, hostname);
 		}
 
+		host->name = strdup(hostname);
+		host->stdout_fd = -1;
+		host->stderr_fd = -1;
 		host->pid = -1;
 		host->next = NULL;
-		host->name = strdup(hostname);
 
 		if (host->name == NULL) {
 			err(3, "strdup hostname %s", hostname);
