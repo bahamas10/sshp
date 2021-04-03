@@ -13,6 +13,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,6 +105,12 @@ static char *base_ssh_command[MAX_ARGS] = {NULL};
 // Epoll instance
 int epoll_fd;
 
+
+pthread_mutex_t lock;
+
+// Semaphore to communicate when to reap child processes
+sem_t sem;
+
 /*
  * A struct that represents the global state of this program.  This is used
  * mainly to synhcronize data between the 2 threads.
@@ -170,6 +177,8 @@ static struct colors {
 	char *stderr;
 	char *stdout;
 	char *value;
+	char *good;
+	char *bad;
 } colors;
 
 /*
@@ -322,7 +331,6 @@ spawn_child_process(Host *host)
 		char **item = *items;
 		while (*item != NULL) {
 			char *arg = *item;
-			printf("command[%d] = '%s'\n", idx, arg);
 			command[idx++] = arg;
 			if (idx >= MAX_ARGS) {
 				errx(2, "too many arguments (<= %d)", MAX_ARGS);
@@ -335,8 +343,6 @@ spawn_child_process(Host *host)
 	}
 	assert(idx < MAX_ARGS);
 	assert(command[MAX_ARGS - 1] == NULL);
-
-	printf("fork+exec %s\n", host->name);
 
 	// create the stdio pipes
 	if (pipe(stdout_fd) == -1) {
@@ -414,6 +420,7 @@ register_child_process_fds(Host *host)
 	}
 }
 
+/*
 static Host *
 get_host_by_pid(pid_t pid)
 {
@@ -425,27 +432,48 @@ get_host_by_pid(pid_t pid)
 
 	errx(3, "unknown child process exited with pid %d", pid);
 }
+*/
 
 static void
 wait_for_child()
 {
 	int status;
-	pid_t pid = wait(&status);
+	pid_t pid;
+	Host *host;
+
+	// block until a Host is available to reap
+	//printf("- waiting on semaphore\n");
+	sem_wait(&sem);
+	pthread_mutex_lock(&lock);
+	for (host = hosts; host != NULL; host = host->next) {
+		if (host->pid > 0 && host->stdout_fd < 0 && host->stderr_fd < 0) {
+			break;
+		}
+	}
+	pthread_mutex_unlock(&lock);
+
+	if (host == NULL) {
+		errx(3, "couldn't find child to reap");
+	}
+
+	// reap the child
+	pid = waitpid(host->pid, &status, 0);
 
 	if (pid < 0) {
-		err(3, "wait");
+		err(3, "waitpid");
 	}
 
 	// exit code
 	int code = WEXITSTATUS(status);
 
-	// get corresponding host structure
-	Host *host = get_host_by_pid(pid);
-
 	// set exit code
 	host->exit_code = code;
+	host->pid = -1;
 
-	printf("pid %d exited code %d (%s)\n", pid, code, host->name);
+	char *code_color = code == 0 ? colors.good : colors.bad;
+	printf("[%s%s%s] exited: %s%d%s\n",
+	    colors.log_id, host->name, colors.reset,
+	    code_color, code, colors.reset);
 }
 
 /*
@@ -454,15 +482,14 @@ wait_for_child()
 static void *
 thread_subprocess_execution_manager()
 {
-	Host *cur_host = hosts;
 	int outstanding = 0;
 
-	printf("in thread_subprocess_execution_manager\n");
+	//printf("in thread_subprocess_execution_manager\n");
 
 	// loop over all hosts
-	while (cur_host != NULL) {
-		spawn_child_process(cur_host);
-		register_child_process_fds(cur_host);
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		spawn_child_process(h);
+		register_child_process_fds(h);
 		outstanding++;
 
 		assert(outstanding <= opts.max_jobs);
@@ -470,8 +497,6 @@ thread_subprocess_execution_manager()
 			wait_for_child();
 			outstanding--;
 		}
-
-		cur_host = cur_host->next;
 	}
 
 	while (outstanding-- > 0) {
@@ -491,16 +516,30 @@ read_active_fd(FdEvent *fdev)
 {
 	char buf[BUFSIZ];
 	int fd = fdev_get_fd(fdev);
+	Host *host = fdev->host;
 	int bytes;
 	char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
 
-	printf("trying to read fd %d\n", fd);
 	while ((bytes = read(fd, buf, BUFSIZ)) > -1) {
 		// done reading!
 		if (bytes == 0) {
-			printf("fd %d done\n", fd);
+			//printf("fd %d done\n", fd);
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 			close(fd);
+
+			pthread_mutex_lock(&lock);
+			switch (fdev->type) {
+				case PIPE_STDOUT: host->stdout_fd = -1; break;
+				case PIPE_STDERR: host->stderr_fd = -1; break;
+				default: errx(3, "unknown type %d", fdev->type);
+			}
+
+			if (host->stdout_fd == -1 && host->stderr_fd == -1) {
+				//printf("- posting to semaphore\n");
+				sem_post(&sem);
+			}
+			pthread_mutex_unlock(&lock);
+
 			return true;
 		}
 
@@ -512,11 +551,10 @@ read_active_fd(FdEvent *fdev)
 		printf("%s", colors.reset);
 	}
 
-	// handle read error
 	assert(bytes < 0);
 
+	// handle read error
 	if (errno == EWOULDBLOCK) {
-		printf("would block\n");
 		return false;
 	}
 
@@ -537,16 +575,16 @@ thread_subprocess_stdio_manager(void *_num_hosts)
 	int num_hosts = *(int *)_num_hosts;
 	int num_fds = num_hosts * 2;
 
-	printf("in thread_subprocess_stdio_manager\n");
+	//printf("in thread_subprocess_stdio_manager\n");
 
 	char *last_host_printed = NULL;
 
 	while (num_fds > 0) {
-		printf("called epoll_wait\n");
+		//printf("called epoll_wait\n");
 		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
 		    1000);
 
-		printf("epoll_wait returned - got %d events\n", num_events);
+		//printf("epoll_wait returned - got %d events\n", num_events);
 
 		if (num_events == -1) {
 			err(3, "epoll_wait");
@@ -556,8 +594,6 @@ thread_subprocess_stdio_manager(void *_num_hosts)
 			struct epoll_event ev = events[i];
 			FdEvent *fdev = ev.data.ptr;
 			//Host *host = fdev->host;
-			printf("looking at event %d\n", i);
-			printf("fdev->type = %d\n", fdev->type);
 
 			// Print the hostname if it wasn't already printed
 			if (last_host_printed == NULL ||
@@ -719,6 +755,8 @@ parse_arguments(int argc, char **argv)
 		colors.stderr = COLOR_RED;
 		colors.stdout = COLOR_GREEN;
 		colors.value = COLOR_GREEN;
+		colors.good = COLOR_GREEN;
+		colors.bad = COLOR_RED;
 	} else if (strcmp(opts.color, "off") == 0) {
 		// pass, this is default
 	} else {
@@ -774,12 +812,22 @@ main(int argc, char **argv)
 	colors.stderr = "";
 	colors.stdout = "";
 	colors.value = "";
+	colors.good = "";
+	colors.bad = "";
 
 	// initaialize global state
 	global_state.num_fds = 0;
 	global_state.all_children_exited = false;
 	if (pthread_mutex_init(&global_state.lock, NULL) != 0) {
 		err(3, "mutex init global_state.lock");
+	}
+
+	// initalize locks and condition vars
+	if (pthread_mutex_init(&lock, NULL) != 0) {
+		err(3, "mutex init lock");
+	}
+	if (sem_init(&sem, 0, 0) != 0) {
+		err(3, "sem init");
 	}
 
 	// handle CLI options
