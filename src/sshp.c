@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -35,15 +37,15 @@
 #define WRITE_END 1
 
 // ANSI color codes
-#define COLOR_BLACK "\033[0;30m"
-#define COLOR_RED "\033[0;31m"
-#define COLOR_GREEN "\033[0;32m"
-#define COLOR_YELLOW "\033[0;33m"
-#define COLOR_BLUE "\033[0;34m"
+#define COLOR_BLACK   "\033[0;30m"
+#define COLOR_RED     "\033[0;31m"
+#define COLOR_GREEN   "\033[0;32m"
+#define COLOR_YELLOW  "\033[0;33m"
+#define COLOR_BLUE    "\033[0;34m"
 #define COLOR_MAGENTA "\033[0;35m"
-#define COLOR_CYAN "\033[0;36m"
-#define COLOR_WHITE "\033[0;37m"
-#define COLOR_RESET "\033[0m"
+#define COLOR_CYAN    "\033[0;36m"
+#define COLOR_WHITE   "\033[0;37m"
+#define COLOR_RESET   "\033[0m"
 
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
@@ -70,6 +72,7 @@ typedef struct host {
 	pid_t pid;
 	int stdout_fd;
 	int stderr_fd;
+	int exit_code;
 	struct host *next;
 } Host;
 
@@ -108,7 +111,6 @@ int epoll_fd;
 static struct global_state {
 	pthread_mutex_t lock;
 	int num_fds;
-	int num_hosts;
 	bool all_children_exited;
 } global_state;
 
@@ -149,7 +151,7 @@ static struct opts {
 	bool join;
 	char *login;
 	int max_jobs;
-	int mode;
+	enum SSHPMode mode;
 	bool dry_run;
 	bool no_strict;
 	char *port;
@@ -276,7 +278,7 @@ monotonic_time_ms()
 	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
 }
 
-int
+static int
 fdev_get_fd(FdEvent *fdev)
 {
 	assert(fdev != NULL);
@@ -291,7 +293,7 @@ fdev_get_fd(FdEvent *fdev)
 /*
  * Fork and exec a subprocess
  */
-void
+static void
 spawn_child_process(Host *host)
 {
 	assert(host != NULL);
@@ -303,7 +305,6 @@ spawn_child_process(Host *host)
 	pid_t pid;
 	int stdout_fd[2];
 	int stderr_fd[2];
-
 
 	/*
 	 * construct SSH command like:
@@ -385,7 +386,7 @@ spawn_child_process(Host *host)
 	}
 }
 
-void
+static void
 register_child_process_fds(Host *host)
 {
 	enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
@@ -413,13 +414,48 @@ register_child_process_fds(Host *host)
 	}
 }
 
+static Host *
+get_host_by_pid(pid_t pid)
+{
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		if (h->pid == pid) {
+			return h;
+		}
+	}
+
+	errx(3, "unknown child process exited with pid %d", pid);
+}
+
+static void
+wait_for_child()
+{
+	int status;
+	pid_t pid = wait(&status);
+
+	if (pid < 0) {
+		err(3, "wait");
+	}
+
+	// exit code
+	int code = WEXITSTATUS(status);
+
+	// get corresponding host structure
+	Host *host = get_host_by_pid(pid);
+
+	// set exit code
+	host->exit_code = code;
+
+	printf("pid %d exited code %d (%s)\n", pid, code, host->name);
+}
+
 /*
  * Thread to manage subprocess execution
  */
-void *
+static void *
 thread_subprocess_execution_manager()
 {
 	Host *cur_host = hosts;
+	int outstanding = 0;
 
 	printf("in thread_subprocess_execution_manager\n");
 
@@ -427,9 +463,22 @@ thread_subprocess_execution_manager()
 	while (cur_host != NULL) {
 		spawn_child_process(cur_host);
 		register_child_process_fds(cur_host);
+		outstanding++;
+
+		assert(outstanding <= opts.max_jobs);
+		if (outstanding == opts.max_jobs) {
+			wait_for_child();
+			outstanding--;
+		}
 
 		cur_host = cur_host->next;
 	}
+
+	while (outstanding-- > 0) {
+		wait_for_child();
+	}
+
+	global_state.all_children_exited = true;
 
 	return NULL;
 }
@@ -437,59 +486,65 @@ thread_subprocess_execution_manager()
 /*
  * Read data from FdEvent until end or would-block
  */
-bool
+static bool
 read_active_fd(FdEvent *fdev)
 {
 	char buf[BUFSIZ];
 	int fd = fdev_get_fd(fdev);
-
-	printf("trying to read fd %d\n", fd);
-	int bytes = read(fd, buf, BUFSIZ);
-
-	// read error
-	if (bytes < 0) {
-		if (errno == EWOULDBLOCK) {
-			printf("would block\n");
-			return false;
-		}
-		err(3, "read failed");
-	}
-
-	// done reading!
-	if (bytes == 0) {
-		printf("fd %d done\n", fd);
-		epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-		close(fd);
-		return false;
-	}
+	int bytes;
 	char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
 
-	printf("%s", color);
-	if (write(STDOUT_FILENO, buf, bytes) < bytes) {
-		err(3, "write failed");
-	}
-	printf("%s", colors.reset);
+	printf("trying to read fd %d\n", fd);
+	while ((bytes = read(fd, buf, BUFSIZ)) > -1) {
+		// done reading!
+		if (bytes == 0) {
+			printf("fd %d done\n", fd);
+			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+			close(fd);
+			return true;
+		}
 
-	return true;
+		// print the data to stdout
+		printf("%s", color);
+		if (write(STDOUT_FILENO, buf, bytes) < bytes) {
+			err(3, "write failed");
+		}
+		printf("%s", colors.reset);
+	}
+
+	// handle read error
+	assert(bytes < 0);
+
+	if (errno == EWOULDBLOCK) {
+		printf("would block\n");
+		return false;
+	}
+
+	err(3, "read failed");
+
+	/* NOT REACHED */
+	return false;
 }
 
 /*
  * Thread to manage subprocess stdio
  */
-void *
-thread_subprocess_stdio_manager()
+static void *
+thread_subprocess_stdio_manager(void *_num_hosts)
 {
 	//struct epoll_event event;
 	struct epoll_event events[EPOLL_MAX_EVENTS];
+	int num_hosts = *(int *)_num_hosts;
+	int num_fds = num_hosts * 2;
 
 	printf("in thread_subprocess_stdio_manager\n");
 
 	char *last_host_printed = NULL;
 
-	while (true) {
-		// XXX -1? probably should use timeout?
+	while (num_fds > 0) {
 		printf("called epoll_wait\n");
-		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS, 3000);
+		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
+		    1000);
 
 		printf("epoll_wait returned - got %d events\n", num_events);
 
@@ -504,27 +559,35 @@ thread_subprocess_stdio_manager()
 			printf("looking at event %d\n", i);
 			printf("fdev->type = %d\n", fdev->type);
 
-			if (last_host_printed == NULL || last_host_printed != fdev->host->name) {
-				printf("[%s%s%s]\n", colors.log_id, fdev->host->name, colors.reset);
+			// Print the hostname if it wasn't already printed
+			if (last_host_printed == NULL ||
+			    last_host_printed != fdev->host->name) {
+
+				printf("[%s%s%s]\n", colors.log_id,
+				    fdev->host->name, colors.reset);
 				last_host_printed = fdev->host->name;
 			}
 
-			while (read_active_fd(fdev));
+			// exhaust the active fd of all data
+			bool fd_closed = read_active_fd(fdev);
+			if (fd_closed) {
+				num_fds--;
+			}
 		}
 	}
-
 	return NULL;
 }
 
 /*
  * Parse the hosts file and create the Host structs
  */
-static void
+static int
 parse_hosts(FILE *f)
 {
 	Host *tail = NULL;
 	char hostname[HOST_NAME_MAX];
 	int lineno = 1;
+	int num_hosts = 0;
 
 	while (fgets(hostname, HOST_NAME_MAX, f) != NULL) {
 		Host *host;
@@ -554,6 +617,7 @@ parse_hosts(FILE *f)
 		host->stdout_fd = -1;
 		host->stderr_fd = -1;
 		host->pid = -1;
+		host->exit_code = -1;
 		host->next = NULL;
 
 		if (host->name == NULL) {
@@ -569,7 +633,7 @@ parse_hosts(FILE *f)
 		}
 
 		tail = host;
-		global_state.num_hosts++;
+		num_hosts++;
 
 next:
 		lineno++;
@@ -579,6 +643,8 @@ next:
 		errx(2, "failed to read hosts file");
 	}
 	assert(feof(f));
+
+	return num_hosts;
 }
 
 /*
@@ -673,6 +739,7 @@ main(int argc, char **argv)
 	long delta;
 	long end_time;
 	long start_time;
+	int num_hosts;
 	pthread_t subprocess_execution_manager;
 	pthread_t subprocess_stdio_manager;
 
@@ -710,7 +777,6 @@ main(int argc, char **argv)
 
 	// initaialize global state
 	global_state.num_fds = 0;
-	global_state.num_hosts = 0;
 	global_state.all_children_exited = false;
 	if (pthread_mutex_init(&global_state.lock, NULL) != 0) {
 		err(3, "mutex init global_state.lock");
@@ -741,11 +807,11 @@ main(int argc, char **argv)
 	assert(hosts_file != NULL);
 
 	// read in hosts and create structure for each one
-	parse_hosts(hosts_file);
+	num_hosts = parse_hosts(hosts_file);
 	fclose(hosts_file);
 
 	// ensure at least 1 host is specified
-	if (global_state.num_hosts < 1) {
+	if (num_hosts < 1) {
 		errx(2, "no hosts specified");
 	}
 
@@ -767,7 +833,7 @@ main(int argc, char **argv)
 
 		// print hosts
 		DEBUG("hosts (%s%d%s): [ ",
-		    colors.important, global_state.num_hosts, colors.reset);
+		    colors.important, num_hosts, colors.reset);
 		for (Host *h = hosts; h != NULL; h = h->next) {
 			printf("%s'%s'%s ",
 			    colors.value, h->name, colors.reset);
@@ -792,7 +858,7 @@ main(int argc, char **argv)
 
 	// create both threads
 	if (pthread_create(&subprocess_stdio_manager, NULL,
-	    thread_subprocess_stdio_manager, NULL) != 0) {
+	    thread_subprocess_stdio_manager, &num_hosts) != 0) {
 		err(3, "pthread_create subprocess_stdio_manager");
 	}
 	if (pthread_create(&subprocess_execution_manager, NULL,
