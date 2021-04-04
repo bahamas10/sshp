@@ -396,20 +396,12 @@ spawn_child_process(Host *host)
 
 	// in child
 	if (pid == 0) {
-		/*
-		close(stdout_fd[READ_END]);
-		close(stderr_fd[READ_END]);
-		*/
 		if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
 			err(3, "dup2 stdout");
 		}
 		if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
 			err(3, "dup2 stderr");
 		}
-		/*
-		close(stdout_fd[WRITE_END]);
-		close(stderr_fd[WRITE_END]);
-		*/
 
 		execvp(command[0], command);
 		err(3, "exec");
@@ -454,20 +446,6 @@ register_child_process_fds(Host *host)
 		}
 	}
 }
-
-/*
-static Host *
-get_host_by_pid(pid_t pid)
-{
-	for (Host *h = hosts; h != NULL; h = h->next) {
-		if (h->pid == pid) {
-			return h;
-		}
-	}
-
-	errx(3, "unknown child process exited with pid %d", pid);
-}
-*/
 
 static void
 wait_for_child(Host *host)
