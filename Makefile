@@ -1,5 +1,5 @@
 CC := cc
-CFLAGS := -Wall -Werror -Wextra -Wpedantic -O2 -lpthread
+CFLAGS := -Wall -Werror -Wextra -Wpedantic -O2
 
 sshp: src/sshp.c
 	$(CC) -o $@ $(CFLAGS) $^

@@ -12,14 +12,11 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
-#include <pthread.h>
-#include <semaphore.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -28,8 +25,8 @@
 #define SSHP_VERSION "v0.0.0"
 
 // epoll max events
-#define EPOLL_MAX_EVENTS 10
-#define EPOLL_WAIT_TIMEOUT 1000
+#define EPOLL_MAX_EVENTS 50
+#define EPOLL_WAIT_TIMEOUT -1
 
 // maximum number of arguments for a child process
 #define MAX_ARGS 256
@@ -227,16 +224,28 @@ print_usage(FILE *s)
 static void *
 safe_malloc(size_t size, const char *msg)
 {
-	void *ptr = malloc(size);
+	void *ptr;
+
+	assert(size > 0);
+	assert(msg != NULL);
+
+	ptr = malloc(size);
+
 	if (ptr == NULL) {
 		err(3, "malloc %s", msg);
 	}
+
 	return ptr;
 }
 
+/*
+ * Create a pipe with both ends set to non-blocking and cloexec.
+ */
 void
 make_pipe(int *fd)
 {
+	assert(fd != NULL);
+
 	if (pipe(fd) == -1) {
 		err(3, "pipe");
 	}
@@ -262,6 +271,8 @@ push_argument(char *s)
 {
 	static int idx = 0;
 
+	assert(s != NULL);
+
 	if (idx >= MAX_ARGS - 2) {
 		errx(2, "too many command arguments");
 	}
@@ -277,6 +288,8 @@ push_argument(char *s)
 static bool
 trim_newline(char *s)
 {
+	assert(s != NULL);
+
 	for (int i = 0; s[i] != '\0'; i++) {
 		if (s[i] == '\n') {
 			s[i] = '\0';
@@ -301,17 +314,28 @@ monotonic_time_ms()
 	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
 }
 
+/*
+ * Print the header for a given host.
+ */
 static void
 print_host_header(Host *host)
 {
+	assert(host != NULL);
+
 	printf("[%s%s%s]", colors.log_id,
 	    host->name, colors.reset);
 }
 
+/*
+ * Optionally print the header for a given host.  This is used by "group" mode
+ * to print the host only if it wasn't already printed.
+ */
 static void
 try_print_host_header(Host *host)
 {
 	static char *last_host_printed = NULL;
+
+	assert(host != NULL);
 
 	if (last_host_printed == NULL ||
 	    last_host_printed != host->name) {
@@ -322,10 +346,14 @@ try_print_host_header(Host *host)
 	}
 }
 
+/*
+ * Given an FdEvent pointer return the event relevant fd.
+ */
 static int
 fdev_get_fd(FdEvent *fdev)
 {
 	assert(fdev != NULL);
+	assert(fdev->host != NULL);
 
 	switch (fdev->type) {
 	case PIPE_STDOUT: return fdev->host->stdout_fd;
@@ -335,7 +363,8 @@ fdev_get_fd(FdEvent *fdev)
 }
 
 /*
- * Fork and exec a subprocess
+ * Fork and exec a subprocess.  This function is responsible for creating and
+ * initializing the stdio pipes and attaching them to the given Host object.
  */
 static void
 spawn_child_process(Host *host)
@@ -379,6 +408,7 @@ spawn_child_process(Host *host)
 	assert(idx < MAX_ARGS);
 	assert(command[MAX_ARGS - 1] == NULL);
 
+	// TODO change
 	command[0] = "ls";
 	command[1] = "-lha";
 	command[2] = "/proc/self/fd";
@@ -419,14 +449,19 @@ spawn_child_process(Host *host)
 	host->started_time = monotonic_time_ms();
 }
 
+/*
+ * Given a Host object that has had its child process spawned add both of its
+ * pipes fds to the epoll watcher for events.
+ */
 static void
 register_child_process_fds(Host *host)
 {
 	enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
 	int count = sizeof (types) / sizeof (types[0]);
 
-	assert(host->stdout_fd != -1);
-	assert(host->stderr_fd != -1);
+	assert(host != NULL);
+	assert(host->stdout_fd >= 0);
+	assert(host->stderr_fd >= 0);
 
 	for (int i = 0; i < count; i++) {
 		// create an epoll event
@@ -450,10 +485,10 @@ register_child_process_fds(Host *host)
 static void
 wait_for_child(Host *host)
 {
-	assert(host != NULL);
-
 	int status;
 	pid_t pid;
+
+	assert(host != NULL);
 
 	// reap the child
 	pid = waitpid(host->pid, &status, 0);
@@ -462,21 +497,19 @@ wait_for_child(Host *host)
 		err(3, "waitpid");
 	}
 
-	// exit code
-	int code = WEXITSTATUS(status);
-
-	// set exit code
-	host->exit_code = code;
-	host->pid = -1;
+	// set the host as closed
+	host->exit_code = WEXITSTATUS(status);
+	host->pid = -2;
 	host->finished_time = monotonic_time_ms();
 
-	long delta = host->finished_time - host->started_time;
-
 	if (opts.exit_codes || opts.debug) {
-		char *code_color = code == 0 ? colors.good : colors.bad;
+		long delta = host->finished_time - host->started_time;
+		char *code_color = host->exit_code == 0 ?
+		    colors.good : colors.bad;
+
 		printf("[%s%s%s] exited: %s%d%s (%s%ld%s ms)\n",
 		    colors.log_id, host->name, colors.reset,
-		    code_color, code, colors.reset,
+		    code_color, host->exit_code, colors.reset,
 		    colors.important, delta, colors.reset);
 	}
 }
@@ -493,7 +526,12 @@ read_active_fd(FdEvent *fdev)
 	int *fd;
 	int *offset;
 	int bytes;
-	Host *host = fdev->host;
+	Host *host;
+
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+
+	host = fdev->host;
 
 	switch (fdev->type) {
 	case PIPE_STDOUT:
@@ -517,7 +555,7 @@ read_active_fd(FdEvent *fdev)
 		if (bytes == 0) {
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
 			close(*fd);
-			*fd = -1;
+			*fd = -2;
 
 			return true;
 		}
@@ -569,12 +607,15 @@ read_active_fd(FdEvent *fdev)
 	err(3, "read failed");
 }
 
+/*
+ * Check if the given Host object has had both of its stdio pipes closed.
+ */
 static bool
 host_stdio_done(Host *h)
 {
 	assert(h != NULL);
 
-	return h->stdout_fd == -1 && h->stderr_fd == -1;
+	return h->stdout_fd == -2 && h->stderr_fd == -2;
 }
 
 static void
@@ -585,7 +626,7 @@ main_loop()
 	struct epoll_event events[EPOLL_MAX_EVENTS];
 
 	// loop while there are still child processes
-	do {
+	while (cur_host != NULL || outstanding > 0) {
 		assert(outstanding <= opts.max_jobs);
 
 		int num_events;
@@ -621,7 +662,7 @@ main_loop()
 				outstanding--;
 			}
 		}
-	} while (cur_host != NULL || outstanding > 0);
+	}
 }
 
 /*
@@ -634,6 +675,8 @@ parse_hosts(FILE *f)
 	char hostname[HOST_NAME_MAX];
 	int lineno = 1;
 	int num_hosts = 0;
+
+	assert(f != NULL);
 
 	while (fgets(hostname, HOST_NAME_MAX, f) != NULL) {
 		Host *host;
