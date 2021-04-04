@@ -29,6 +29,7 @@
 
 // epoll max events
 #define EPOLL_MAX_EVENTS 10
+#define EPOLL_WAIT_TIMEOUT 1000
 
 // maximum number of arguments for a child process
 #define MAX_ARGS 256
@@ -74,6 +75,8 @@ typedef struct host {
 	int stdout_fd;
 	int stderr_fd;
 	int exit_code;
+	long started_time;
+	long finished_time;
 	struct host *next;
 } Host;
 
@@ -103,23 +106,7 @@ static char **remote_command = {NULL};
 static char *base_ssh_command[MAX_ARGS] = {NULL};
 
 // Epoll instance
-int epoll_fd;
-
-
-pthread_mutex_t lock;
-
-// Semaphore to communicate when to reap child processes
-sem_t sem;
-
-/*
- * A struct that represents the global state of this program.  This is used
- * mainly to synhcronize data between the 2 threads.
- */
-static struct global_state {
-	pthread_mutex_t lock;
-	int num_fds;
-	bool all_children_exited;
-} global_state;
+static int epoll_fd;
 
 // CLI options for getopt_long
 static char *short_options = "ac:def:ghi:jl:m:nNp:qstvy";
@@ -287,6 +274,20 @@ monotonic_time_ms()
 	return (t.tv_sec * 1e3) + (t.tv_nsec / 1e6);
 }
 
+static void
+print_host_header(Host *host)
+{
+	static char *last_host_printed = NULL;
+
+	if (last_host_printed == NULL ||
+	    last_host_printed != host->name) {
+
+		printf("[%s%s%s]\n", colors.log_id,
+		    host->name, colors.reset);
+		    last_host_printed = host->name;
+	}
+}
+
 static int
 fdev_get_fd(FdEvent *fdev)
 {
@@ -382,13 +383,20 @@ spawn_child_process(Host *host)
 	host->pid = pid;
 	host->stdout_fd = stdout_fd[READ_END];
 	host->stderr_fd = stderr_fd[READ_END];
+	host->started_time = monotonic_time_ms();
 
-	// set read pipes nonblocking
+	// set read pipes nonblocking and cloexec
 	if (fcntl(host->stdout_fd, F_SETFL, O_NONBLOCK) == -1) {
 		err(3, "set nonblocking");
 	}
 	if (fcntl(host->stderr_fd, F_SETFL, O_NONBLOCK) == -1) {
 		err(3, "set nonblocking");
+	}
+	if (fcntl(host->stdout_fd, F_SETFD, O_CLOEXEC) == -1) {
+		err(3, "set cloexec");
+	}
+	if (fcntl(host->stderr_fd, F_SETFD, O_CLOEXEC) == -1) {
+		err(3, "set cloexec");
 	}
 }
 
@@ -435,26 +443,12 @@ get_host_by_pid(pid_t pid)
 */
 
 static void
-wait_for_child()
+wait_for_child(Host *host)
 {
+	assert(host != NULL);
+
 	int status;
 	pid_t pid;
-	Host *host;
-
-	// block until a Host is available to reap
-	//printf("- waiting on semaphore\n");
-	sem_wait(&sem);
-	pthread_mutex_lock(&lock);
-	for (host = hosts; host != NULL; host = host->next) {
-		if (host->pid > 0 && host->stdout_fd < 0 && host->stderr_fd < 0) {
-			break;
-		}
-	}
-	pthread_mutex_unlock(&lock);
-
-	if (host == NULL) {
-		errx(3, "couldn't find child to reap");
-	}
 
 	// reap the child
 	pid = waitpid(host->pid, &status, 0);
@@ -469,43 +463,17 @@ wait_for_child()
 	// set exit code
 	host->exit_code = code;
 	host->pid = -1;
+	host->finished_time = monotonic_time_ms();
 
-	char *code_color = code == 0 ? colors.good : colors.bad;
-	printf("[%s%s%s] exited: %s%d%s\n",
-	    colors.log_id, host->name, colors.reset,
-	    code_color, code, colors.reset);
-}
+	long delta = host->finished_time - host->started_time;
 
-/*
- * Thread to manage subprocess execution
- */
-static void *
-thread_subprocess_execution_manager()
-{
-	int outstanding = 0;
-
-	//printf("in thread_subprocess_execution_manager\n");
-
-	// loop over all hosts
-	for (Host *h = hosts; h != NULL; h = h->next) {
-		spawn_child_process(h);
-		register_child_process_fds(h);
-		outstanding++;
-
-		assert(outstanding <= opts.max_jobs);
-		if (outstanding == opts.max_jobs) {
-			wait_for_child();
-			outstanding--;
-		}
+	if (opts.exit_codes || opts.debug) {
+		char *code_color = code == 0 ? colors.good : colors.bad;
+		printf("[%s%s%s] exited: %s%d%s (%s%ld%s ms)\n",
+		    colors.log_id, host->name, colors.reset,
+		    code_color, code, colors.reset,
+		    colors.important, delta, colors.reset);
 	}
-
-	while (outstanding-- > 0) {
-		wait_for_child();
-	}
-
-	global_state.all_children_exited = true;
-
-	return NULL;
 }
 
 /*
@@ -521,30 +489,25 @@ read_active_fd(FdEvent *fdev)
 	char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
 
 	while ((bytes = read(fd, buf, BUFSIZ)) > -1) {
+
 		// done reading!
 		if (bytes == 0) {
-			//printf("fd %d done\n", fd);
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 			close(fd);
 
-			pthread_mutex_lock(&lock);
 			switch (fdev->type) {
 				case PIPE_STDOUT: host->stdout_fd = -1; break;
 				case PIPE_STDERR: host->stderr_fd = -1; break;
 				default: errx(3, "unknown type %d", fdev->type);
 			}
 
-			if (host->stdout_fd == -1 && host->stderr_fd == -1) {
-				//printf("- posting to semaphore\n");
-				sem_post(&sem);
-			}
-			pthread_mutex_unlock(&lock);
-
 			return true;
 		}
 
 		// print the data to stdout
+		print_host_header(host);
 		printf("%s", color);
+		fflush(stdout);
 		if (write(STDOUT_FILENO, buf, bytes) < bytes) {
 			err(3, "write failed");
 		}
@@ -559,59 +522,61 @@ read_active_fd(FdEvent *fdev)
 	}
 
 	err(3, "read failed");
-
-	/* NOT REACHED */
-	return false;
 }
 
-/*
- * Thread to manage subprocess stdio
- */
-static void *
-thread_subprocess_stdio_manager(void *_num_hosts)
+static bool
+host_stdio_done(Host *h)
 {
-	//struct epoll_event event;
+	assert(h != NULL);
+
+	return h->stdout_fd == -1 && h->stderr_fd == -1;
+}
+
+static void
+main_loop()
+{
+	Host *cur_host = hosts;
+	int outstanding = 0;
 	struct epoll_event events[EPOLL_MAX_EVENTS];
-	int num_hosts = *(int *)_num_hosts;
-	int num_fds = num_hosts * 2;
 
-	//printf("in thread_subprocess_stdio_manager\n");
+	// loop while there are still child processes
+	do {
+		assert(outstanding <= opts.max_jobs);
 
-	char *last_host_printed = NULL;
+		int num_events;
 
-	while (num_fds > 0) {
-		//printf("called epoll_wait\n");
-		int num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
-		    1000);
+		// create child processes
+		while (cur_host != NULL && outstanding < opts.max_jobs) {
+			spawn_child_process(cur_host);
+			register_child_process_fds(cur_host);
 
-		//printf("epoll_wait returned - got %d events\n", num_events);
+			outstanding++;
+			cur_host = cur_host->next;
+		}
 
+		// wait for fd events
+		num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
+		    EPOLL_WAIT_TIMEOUT);
 		if (num_events == -1) {
 			err(3, "epoll_wait");
 		}
 
+		// loop fd events
 		for (int i = 0; i < num_events; i++) {
 			struct epoll_event ev = events[i];
 			FdEvent *fdev = ev.data.ptr;
-			//Host *host = fdev->host;
+			Host *host = fdev->host;
 
-			// Print the hostname if it wasn't already printed
-			if (last_host_printed == NULL ||
-			    last_host_printed != fdev->host->name) {
-
-				printf("[%s%s%s]\n", colors.log_id,
-				    fdev->host->name, colors.reset);
-				last_host_printed = fdev->host->name;
-			}
-
-			// exhaust the active fd of all data
+			// exhaust the active fd of all data or until it would block
 			bool fd_closed = read_active_fd(fdev);
-			if (fd_closed) {
-				num_fds--;
+
+			// check if the childs stdio is done and reap it
+			if (fd_closed && host_stdio_done(host)) {
+				wait_for_child(host);
+				outstanding--;
 			}
 		}
-	}
-	return NULL;
+	} while (cur_host != NULL || outstanding > 0);
 }
 
 /*
@@ -649,21 +614,26 @@ parse_hosts(FILE *f)
 			    lineno, HOST_NAME_MAX, hostname);
 		}
 
+		// initalize host
 		host->name = strdup(hostname);
 		host->stdout_fd = -1;
 		host->stderr_fd = -1;
 		host->pid = -1;
 		host->exit_code = -1;
 		host->next = NULL;
+		host->started_time = -1;
+		host->finished_time = -1;
 
 		if (host->name == NULL) {
 			err(3, "strdup hostname %s", hostname);
 		}
 
+		// set head of list
 		if (hosts == NULL) {
 			hosts = host;
 		}
 
+		// set tail of list
 		if (tail != NULL) {
 			tail->next = host;
 		}
@@ -778,8 +748,6 @@ main(int argc, char **argv)
 	long end_time;
 	long start_time;
 	int num_hosts;
-	pthread_t subprocess_execution_manager;
-	pthread_t subprocess_stdio_manager;
 
 	// record start time
 	start_time = monotonic_time_ms();
@@ -814,21 +782,6 @@ main(int argc, char **argv)
 	colors.value = "";
 	colors.good = "";
 	colors.bad = "";
-
-	// initaialize global state
-	global_state.num_fds = 0;
-	global_state.all_children_exited = false;
-	if (pthread_mutex_init(&global_state.lock, NULL) != 0) {
-		err(3, "mutex init global_state.lock");
-	}
-
-	// initalize locks and condition vars
-	if (pthread_mutex_init(&lock, NULL) != 0) {
-		err(3, "mutex init lock");
-	}
-	if (sem_init(&sem, 0, 0) != 0) {
-		err(3, "sem init");
-	}
 
 	// handle CLI options
 	parse_arguments(argc, argv);
@@ -901,26 +854,8 @@ main(int argc, char **argv)
 		    colors.value, opts.max_jobs, colors.reset);
 	}
 
-	// disable stdout printf buffering
-	setvbuf(stdout, NULL, _IONBF, 0);
-
-	// create both threads
-	if (pthread_create(&subprocess_stdio_manager, NULL,
-	    thread_subprocess_stdio_manager, &num_hosts) != 0) {
-		err(3, "pthread_create subprocess_stdio_manager");
-	}
-	if (pthread_create(&subprocess_execution_manager, NULL,
-	    thread_subprocess_execution_manager, NULL) != 0) {
-		err(3, "pthread_create subprocess_execution_manager");
-	}
-
-	// block on both threads
-	if (pthread_join(subprocess_stdio_manager, NULL) != 0) {
-		err(3, "pthread_join subprocess_stdio_manager");
-	}
-	if (pthread_join(subprocess_execution_manager, NULL) != 0) {
-		err(3, "pthread_join subprocess_execution_manager");
-	}
+	// start the main loop!
+	main_loop();
 
 	// tidy up
 	close(epoll_fd);
