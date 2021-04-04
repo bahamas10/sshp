@@ -34,6 +34,9 @@
 // maximum number of arguments for a child process
 #define MAX_ARGS 256
 
+// maximum number of characters to process in line-by-line mode
+#define MAX_LINE_LENGTH 1024
+
 // pipe ends
 #define READ_END 0
 #define WRITE_END 1
@@ -74,6 +77,10 @@ typedef struct host {
 	pid_t pid;
 	int stdout_fd;
 	int stderr_fd;
+	char *stdout;
+	char *stderr;
+	int stdout_offset;
+	int stderr_offset;
 	int exit_code;
 	long started_time;
 	long finished_time;
@@ -227,6 +234,26 @@ safe_malloc(size_t size, const char *msg)
 	return ptr;
 }
 
+void
+make_pipe(int *fd)
+{
+	if (pipe(fd) == -1) {
+		err(3, "pipe");
+	}
+	if (fcntl(fd[READ_END], F_SETFL, O_NONBLOCK) == -1) {
+		err(3, "set nonblocking");
+	}
+	if (fcntl(fd[WRITE_END], F_SETFL, O_NONBLOCK) == -1) {
+		err(3, "set nonblocking");
+	}
+	if (fcntl(fd[READ_END], F_SETFD, FD_CLOEXEC) == -1) {
+		err(3, "set cloexec");
+	}
+	if (fcntl(fd[WRITE_END], F_SETFD, FD_CLOEXEC) == -1) {
+		err(3, "set cloexec");
+	}
+}
+
 /*
  * Push an argument to the ssh base command and bounds check it.
  */
@@ -277,14 +304,21 @@ monotonic_time_ms()
 static void
 print_host_header(Host *host)
 {
+	printf("[%s%s%s]", colors.log_id,
+	    host->name, colors.reset);
+}
+
+static void
+try_print_host_header(Host *host)
+{
 	static char *last_host_printed = NULL;
 
 	if (last_host_printed == NULL ||
 	    last_host_printed != host->name) {
 
-		printf("[%s%s%s]\n", colors.log_id,
-		    host->name, colors.reset);
-		    last_host_printed = host->name;
+		print_host_header(host);
+		printf("\n");
+		last_host_printed = host->name;
 	}
 }
 
@@ -294,9 +328,9 @@ fdev_get_fd(FdEvent *fdev)
 	assert(fdev != NULL);
 
 	switch (fdev->type) {
-		case PIPE_STDOUT: return fdev->host->stdout_fd;
-		case PIPE_STDERR: return fdev->host->stderr_fd;
-		default: errx(3, "unknown fdev->type '%d'", fdev->type);
+	case PIPE_STDOUT: return fdev->host->stdout_fd;
+	case PIPE_STDERR: return fdev->host->stderr_fd;
+	default: errx(3, "unknown fdev->type '%d'", fdev->type);
 	}
 }
 
@@ -345,13 +379,14 @@ spawn_child_process(Host *host)
 	assert(idx < MAX_ARGS);
 	assert(command[MAX_ARGS - 1] == NULL);
 
+	command[0] = "ls";
+	command[1] = "-lha";
+	command[2] = "/proc/self/fd";
+	command[3] = NULL;
+
 	// create the stdio pipes
-	if (pipe(stdout_fd) == -1) {
-		err(3, "pipe");
-	}
-	if (pipe(stderr_fd) == -1) {
-		err(3, "pipe");
-	}
+	make_pipe(stdout_fd);
+	make_pipe(stderr_fd);
 
 	// fork the process
 	pid = fork();
@@ -361,14 +396,20 @@ spawn_child_process(Host *host)
 
 	// in child
 	if (pid == 0) {
+		/*
 		close(stdout_fd[READ_END]);
 		close(stderr_fd[READ_END]);
+		*/
 		if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
 			err(3, "dup2 stdout");
 		}
 		if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
 			err(3, "dup2 stderr");
 		}
+		/*
+		close(stdout_fd[WRITE_END]);
+		close(stderr_fd[WRITE_END]);
+		*/
 
 		execvp(command[0], command);
 		err(3, "exec");
@@ -384,20 +425,6 @@ spawn_child_process(Host *host)
 	host->stdout_fd = stdout_fd[READ_END];
 	host->stderr_fd = stderr_fd[READ_END];
 	host->started_time = monotonic_time_ms();
-
-	// set read pipes nonblocking and cloexec
-	if (fcntl(host->stdout_fd, F_SETFL, O_NONBLOCK) == -1) {
-		err(3, "set nonblocking");
-	}
-	if (fcntl(host->stderr_fd, F_SETFL, O_NONBLOCK) == -1) {
-		err(3, "set nonblocking");
-	}
-	if (fcntl(host->stdout_fd, F_SETFD, O_CLOEXEC) == -1) {
-		err(3, "set cloexec");
-	}
-	if (fcntl(host->stderr_fd, F_SETFD, O_CLOEXEC) == -1) {
-		err(3, "set cloexec");
-	}
 }
 
 static void
@@ -482,36 +509,76 @@ wait_for_child(Host *host)
 static bool
 read_active_fd(FdEvent *fdev)
 {
+	char *color;
+	char *linebuf;
 	char buf[BUFSIZ];
-	int fd = fdev_get_fd(fdev);
-	Host *host = fdev->host;
+	int *fd;
+	int *offset;
 	int bytes;
-	char *color = fdev->type == PIPE_STDOUT ? colors.stdout : colors.stderr;
+	Host *host = fdev->host;
 
-	while ((bytes = read(fd, buf, BUFSIZ)) > -1) {
+	switch (fdev->type) {
+	case PIPE_STDOUT:
+		color = colors.stdout;
+		fd = &host->stdout_fd;
+		linebuf = host->stdout;
+		offset = &host->stdout_offset;
+		break;
+	case PIPE_STDERR:
+		color = colors.stderr;
+		fd = &host->stderr_fd;
+		linebuf = host->stderr;
+		offset = &host->stderr_offset;
+		break;
+	default:
+		errx(3, "unknown type %d", fdev->type);
+	}
 
+	while ((bytes = read(*fd, buf, BUFSIZ)) > -1) {
 		// done reading!
 		if (bytes == 0) {
-			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-			close(fd);
-
-			switch (fdev->type) {
-				case PIPE_STDOUT: host->stdout_fd = -1; break;
-				case PIPE_STDERR: host->stderr_fd = -1; break;
-				default: errx(3, "unknown type %d", fdev->type);
-			}
+			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
+			close(*fd);
+			*fd = -1;
 
 			return true;
 		}
 
 		// print the data to stdout
-		print_host_header(host);
-		printf("%s", color);
-		fflush(stdout);
-		if (write(STDOUT_FILENO, buf, bytes) < bytes) {
-			err(3, "write failed");
+		switch (opts.mode) {
+		case MODE_LINE_BY_LINE:
+			for (int i = 0; i < bytes; i++) {
+				char c = buf[i];
+				linebuf[*offset] = c;
+
+				*offset = *offset + 1;
+				if (*offset >= MAX_LINE_LENGTH - 2) {
+					linebuf[MAX_LINE_LENGTH - 2] = '\n';
+					linebuf[MAX_LINE_LENGTH - 1] = '\0';
+				}
+
+				if (c == '\n') {
+					linebuf[*offset] = '\0';
+					print_host_header(host);
+					printf(" %s%s%s", color, linebuf,
+					    colors.reset);
+					*offset = 0;
+				}
+			}
+			break;
+		case MODE_GROUP:
+			try_print_host_header(host);
+			printf("%s", color);
+			fflush(stdout);
+			if (write(STDOUT_FILENO, buf, bytes) < bytes) {
+				err(3, "write failed");
+			}
+			printf("%s", colors.reset);
+			break;
+		default:
+			errx(3, "unknown mode: %d", opts.mode);
+			break;
 		}
-		printf("%s", colors.reset);
 	}
 
 	assert(bytes < 0);
@@ -623,9 +690,24 @@ parse_hosts(FILE *f)
 		host->next = NULL;
 		host->started_time = -1;
 		host->finished_time = -1;
+		host->stdout = NULL;
+		host->stderr = NULL;
+		host->stderr_offset = 0;
+		host->stdout_offset = 0;
 
 		if (host->name == NULL) {
 			err(3, "strdup hostname %s", hostname);
+		}
+
+		switch (opts.mode) {
+		case MODE_LINE_BY_LINE:
+			host->stdout = safe_malloc(MAX_LINE_LENGTH, "host->stdout");
+			host->stderr = safe_malloc(MAX_LINE_LENGTH, "host->stderr");
+			break;
+		case MODE_GROUP:
+			break;
+		case MODE_JOIN:
+			break;
 		}
 
 		// set head of list
