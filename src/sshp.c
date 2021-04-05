@@ -119,6 +119,9 @@ static char *base_ssh_command[MAX_ARGS] = {NULL};
 // Epoll instance
 static int epoll_fd;
 
+// If a newline was printed (used for group mode only)
+static bool newline_printed = true;
+
 // CLI options for getopt_long
 static char *short_options = "ac:def:ghi:jl:m:nNp:qstvy";
 static struct option long_options[] = {
@@ -709,6 +712,13 @@ wait_for_child(Host *host)
 		char *code_color = host->exit_code == 0 ?
 		    colors.good : colors.bad;
 
+		// check if a newline is needed
+		if (!newline_printed) {
+			printf("\n");
+			newline_printed = true;
+		}
+
+		// print the exit status
 		printf("[%s%s%s] exited: %s%d%s (%s%ld%s ms)\n",
 		    colors.log_id, host->name, colors.reset,
 		    code_color, host->exit_code, colors.reset,
@@ -787,7 +797,6 @@ process_data_group(FdEvent *fdev, char *buf, int bytes)
 	assert(bytes > 0);
 
 	static Host *last_host = NULL;
-	static bool newline_printed = true;
 
 	// processing a new host from last time
 	if (last_host != fdev->host) {
