@@ -22,37 +22,37 @@
 #include <unistd.h>
 
 // app detauls
-#define PROG_NAME      "sshp"
-#define PROG_VERSION   "v0.0.0"
-#define PROG_FULL_NAME "Parallel SSH Manager"
-#define PROG_SOURCE    "https://github.com/bahamas10/sshp"
-#define PROG_LICENSE   "MIT License"
+#define PROG_NAME	"sshp"
+#define PROG_VERSION	"v0.0.0"
+#define PROG_FULL_NAME	"Parallel SSH Manager"
+#define PROG_SOURCE	"https://github.com/bahamas10/sshp"
+#define PROG_LICENSE	"MIT License"
 
 // epoll options
-#define EPOLL_MAX_EVENTS    50
-#define EPOLL_WAIT_TIMEOUT -1
+#define EPOLL_MAX_EVENTS	50
+#define EPOLL_WAIT_TIMEOUT	-1
 
 // maximum number of arguments for a child process
-#define MAX_ARGS 256
+#define MAX_ARGS	256
 
 // max characters to process in line-by-line and join mode respectively
-#define DEFAULT_MAX_LINE_LENGTH   (1 * 1024) // 1k
-#define DEFAULT_MAX_OUTPUT_LENGTH (8 * 1024) // 8k
+#define DEFAULT_MAX_LINE_LENGTH		(1 * 1024) // 1k
+#define DEFAULT_MAX_OUTPUT_LENGTH	(8 * 1024) // 8k
 
 // pipe ends
-#define READ_END  0
-#define WRITE_END 1
+#define READ_END	0
+#define WRITE_END	1
 
 // ANSI color codes
-#define COLOR_BLACK   "\033[0;30m"
-#define COLOR_RED     "\033[0;31m"
-#define COLOR_GREEN   "\033[0;32m"
-#define COLOR_YELLOW  "\033[0;33m"
-#define COLOR_BLUE    "\033[0;34m"
-#define COLOR_MAGENTA "\033[0;35m"
-#define COLOR_CYAN    "\033[0;36m"
-#define COLOR_WHITE   "\033[0;37m"
-#define COLOR_RESET   "\033[0m"
+#define COLOR_BLACK	"\033[0;30m"
+#define COLOR_RED	"\033[0;31m"
+#define COLOR_GREEN	"\033[0;32m"
+#define COLOR_YELLOW	"\033[0;33m"
+#define COLOR_BLUE	"\033[0;34m"
+#define COLOR_MAGENTA	"\033[0;35m"
+#define COLOR_CYAN	"\033[0;36m"
+#define COLOR_WHITE	"\033[0;37m"
+#define COLOR_RESET	"\033[0m"
 
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
@@ -63,31 +63,13 @@
 }
 
 /*
- * sshp modes of execution.
+ * Program modes of execution.
  */
-enum SSHPMode {
-	MODE_LINE_BY_LINE = 0,
-	MODE_GROUP,
-	MODE_JOIN
+enum ProgMode {
+	MODE_LINE_BY_LINE = 0,	// line-by-line mode, default
+	MODE_GROUP,		// group mode, `-g` or `--group`
+	MODE_JOIN		// join mode, `-j` or `--join`
 };
-
-/*
- * A struct that represents a single host (as a linked-list).
- */
-typedef struct host {
-	char *name;
-	pid_t pid;
-	int stdout_fd;
-	int stderr_fd;
-	char *stdout;
-	char *stderr;
-	int stdout_offset;
-	int stderr_offset;
-	int exit_code;
-	long started_time;
-	long finished_time;
-	struct host *next;
-} Host;
 
 /*
  * Pipe types.
@@ -98,11 +80,31 @@ enum PipeType {
 };
 
 /*
+ * A struct that represents a single host (as a linked-list).
+ */
+typedef struct host {
+	char *name;		// host name
+	pid_t pid;		// child pid, -1 hasn't started, -2 has exited
+	int num_fds;
+	int stdout_fd;
+	int stderr_fd;
+	char *stdout;
+	char *stderr;
+	int exit_code;
+	long started_time;	// monotonic time (in ms) when child forked
+	long finished_time;	// monotonic time (in ms) when child reaped
+	struct host *next;
+} Host;
+
+/*
  * Wrapper struct for use when an fd sees an event.
  */
 typedef struct fd_event {
-	Host *host;
-	enum PipeType type;
+	Host *host;		// related Host struct
+	int fd;			// file descriptor number
+	char *buffer;		// buffer used by line-by-line and join mode
+	int offset;		// buffer offset used as noted above
+	enum PipeType type;	// type of fd this event represents
 } FdEvent;
 
 // Linked-list of Hosts
@@ -146,26 +148,31 @@ static struct option long_options[] = {
 
 // options set via CLI opts
 static struct opts {
-	int max_line_length;
-	int max_output_length;
-	bool anonymous;
-	char *color;
-	bool debug;
-	bool exit_codes;
-	char *file;
-	bool group;
-	char *identity;
-	bool join;
-	char *login;
-	int max_jobs;
-	enum SSHPMode mode;
-	bool dry_run;
-	bool no_strict;
-	char *port;
-	bool quiet;
-	bool silent;
-	bool trim;
-	bool tty;
+	// user options (program)
+	int max_line_length;	// --max-line-length <num>
+	int max_output_length;	// --max-output-length <num>
+	bool anonymous;		// -a, --anonymous
+	char *color;		// -c, --color <on|off|auto>
+	bool debug;		// -d, --debug
+	bool exit_codes;	// -e, --exit-codes
+	char *file;		// -f, --file <file>
+	bool group;		// -g, --group
+	bool join;		// -j, --join
+	int max_jobs;		// -m, --max-jobs <num>
+	bool dry_run;		// -n, --dry-run
+	char *port;		// -p, --port <port>
+	bool silent;		// -s, --silent
+	bool trim;		// -t, --trim
+
+	// user options (passed directly to ssh)
+	char *identity;		// -i, --ident <file>
+	char *login;		// -l, --login <name>
+	bool no_strict;		// -N, --no-strict
+	bool quiet;		// -q, --quiet
+	bool tty;		// -y, --tty
+
+	// derived options
+	enum ProgMode mode;	// set by program based on `-j` or `-g`
 } opts;
 
 // colors to use when printing if coloring is enabled
@@ -218,6 +225,8 @@ print_usage(FILE *s)
 	fprintf(s, "%sOPTIONS:%s\n", colors.host, colors.reset);
 	fprintf(s, "%s  -a, --anonymous            %s", colors.good, colors.reset);
 	fprintf(s, "hide hostname prefix, defaults to false\n");
+	fprintf(s, "%s  -c, --color <on|off|auto>  %s", colors.good, colors.reset);
+	fprintf(s, "enable or disable color output, defaults to auto\n");
 	fprintf(s, "%s  -d, --debug                %s", colors.good, colors.reset);
 	fprintf(s, "turn on debugging information, defaults to false\n");
 	fprintf(s, "%s  -e, --exit-codes           %s", colors.good, colors.reset);
@@ -261,6 +270,20 @@ print_usage(FILE *s)
 	fprintf(s, "the ssh port\n");
 	fprintf(s, "%s  -y, --tty                  %s", colors.good, colors.reset);
 	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
+}
+
+/*
+ * Convert the given mode to a string.
+ */
+static const char *
+prog_mode_to_string(enum ProgMode mode)
+{
+	switch (mode) {
+	case MODE_LINE_BY_LINE: return "line-by-line";
+	case MODE_GROUP: return "group";
+	case MODE_JOIN: return "join";
+	default: errx(3, "unknown ProgMode: %d", mode);
+	}
 }
 
 /*
@@ -311,10 +334,19 @@ host_create(const char *name)
 	host->finished_time = -1;
 	host->stdout = NULL;
 	host->stderr = NULL;
-	host->stderr_offset = 0;
-	host->stdout_offset = 0;
 
 	return host;
+}
+
+/*
+ * Check if the given Host object has had both of its stdio pipes closed.
+ */
+static bool
+host_stdio_done(Host *h)
+{
+	assert(h != NULL);
+
+	return h->stdout_fd == -2 && h->stderr_fd == -2;
 }
 
 /*
@@ -327,12 +359,14 @@ host_destroy(Host *host)
 		return;
 	}
 
-	if (host->name != NULL) {
-		free(host->name);
-		host->name = NULL;
-	}
+	free(host->name);
+	host->name = NULL;
 
-	free(host);
+	free(host->stdout);
+	host->stdout = NULL;
+
+	free(host->stderr);
+	host->stderr = NULL;
 }
 
 /*
@@ -347,6 +381,23 @@ fdev_create(Host *host, enum PipeType type)
 
 	fdev->host = host;
 	fdev->type = type;
+	fdev->offset = 0;
+	fdev->buffer = NULL;
+
+	// initailize stdio buffers
+	switch (opts.mode) {
+	case MODE_LINE_BY_LINE:
+		fdev->buffer = safe_malloc(opts.max_line_length + 2,
+		    "fdev->buffer");
+		break;
+	case MODE_JOIN:
+		fdev->buffer = safe_malloc(opts.max_output_length + 1,
+		    "fdev->buffer");
+		break;
+	case MODE_GROUP:
+		// stdio is not buffered in group mode
+		break;
+	}
 
 	return fdev;
 }
@@ -363,7 +414,21 @@ fdev_get_fd(FdEvent *fdev)
 	switch (fdev->type) {
 	case PIPE_STDOUT: return fdev->host->stdout_fd;
 	case PIPE_STDERR: return fdev->host->stderr_fd;
-	default: errx(3, "unknown fdev->type '%d'", fdev->type);
+	default: errx(3, "fdev_get_fd unknown fdev->type '%d'", fdev->type);
+	}
+}
+/*
+ * Given an FdEvent pointer return the event relevant color.
+ */
+static char *
+fdev_get_color(FdEvent *fdev)
+{
+	assert(fdev != NULL);
+
+	switch (fdev->type) {
+	case PIPE_STDOUT: return colors.stdout;
+	case PIPE_STDERR: return colors.stderr;
+	default: errx(3, "fdev_get_color unknown fdev->type '%d'", fdev->type);
 	}
 }
 
@@ -373,6 +438,10 @@ fdev_get_fd(FdEvent *fdev)
 static void
 fdev_destroy(FdEvent *fdev)
 {
+	if (fdev != NULL) {
+		free(fdev->buffer);
+		fdev->buffer = NULL;
+	}
 	free(fdev);
 }
 
@@ -466,21 +535,18 @@ print_host_header(Host *host)
 }
 
 /*
- * Fork and exec a subprocess.  This function is responsible for creating and
- * initializing the stdio pipes and attaching them to the given Host object.
+ * Given a Host object and a buffer of a suitable size, fill the buffer with
+ * the required arguments to exec a child process.
  */
 static void
-spawn_child_process(Host *host)
+build_ssh_command(Host *host, char **command, int size)
 {
 	assert(host != NULL);
-	assert(host->name != NULL);
+	assert(command != NULL);
+	assert(size > 0);
 
 	int idx = 0;
-	char *command[MAX_ARGS] = {NULL};
 	char *name_array[] = {host->name, NULL};
-	pid_t pid;
-	int stdout_fd[2];
-	int stderr_fd[2];
 
 	/*
 	 * construct SSH command like:
@@ -499,8 +565,8 @@ spawn_child_process(Host *host)
 		while (*item != NULL) {
 			char *arg = *item;
 			command[idx++] = arg;
-			if (idx >= MAX_ARGS) {
-				errx(2, "too many arguments (<= %d)", MAX_ARGS);
+			if (idx >= size) {
+				errx(2, "too many arguments (<= %d)", size);
 			}
 
 			item++;
@@ -508,8 +574,29 @@ spawn_child_process(Host *host)
 
 		items++;
 	}
-	assert(idx < MAX_ARGS);
-	assert(command[MAX_ARGS - 1] == NULL);
+
+	assert(idx < size);
+	assert(command[size - 1] == NULL);
+}
+
+/*
+ * Fork and exec a subprocess.  This function is responsible for creating and
+ * initializing the stdio pipes and attaching them to the given Host object.
+ */
+static void
+spawn_child_process(Host *host)
+{
+	assert(host != NULL);
+	assert(host->name != NULL);
+
+	char *command[MAX_ARGS] = {NULL};
+	pid_t pid;
+	int stdout_fd[2];
+	int stderr_fd[2];
+	int stdio_fd[2];
+
+	// build the ssh command
+	build_ssh_command(host, command, MAX_ARGS);
 
 	// TODO change
 	command[0] = "ls";
@@ -521,8 +608,14 @@ spawn_child_process(Host *host)
 	command[1] = NULL;
 
 	// create the stdio pipes
-	make_pipe(stdout_fd);
-	make_pipe(stderr_fd);
+	if (opts.mode == MODE_JOIN) {
+		// join mode uses a sharded stdout/stderr pipe
+		make_pipe(stdio_fd);
+	} else {
+		// all other modes use a pipe per stream
+		make_pipe(stdout_fd);
+		make_pipe(stderr_fd);
+	}
 
 	// fork the process
 	pid = fork();
@@ -629,18 +722,129 @@ wait_for_child(Host *host)
  * (used for line-by-line mode).
  */
 static void
-print_line_buffer(Host *host, char *linebuf, char *color)
+print_line_buffer(FdEvent *fdev)
 {
-	assert(host != NULL);
-	assert(linebuf != NULL);
-	assert(color != NULL);
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+	assert(fdev->buffer != NULL);
+
+	char *color = fdev_get_color(fdev);
 
 	if (!opts.anonymous) {
-		print_host_header(host);
+		print_host_header(fdev->host);
 		printf(" ");
 	}
 
-	printf("%s%s%s", color, linebuf, colors.reset);
+	printf("%s%s%s", color, fdev->buffer, colors.reset);
+}
+
+/*
+ * Called by read_active_fd when processing read bytes in line-by-line mode.
+ */
+static void
+process_data_line_by_line(FdEvent *fdev, char *buf, int bytes)
+{
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+	assert(buf != NULL);
+	assert(bytes > 0);
+
+	// loop data character-by-character
+	for (int i = 0; i < bytes; i++) {
+		char c = buf[i];
+
+		if (fdev->offset < opts.max_line_length) {
+			// buffer has room for character
+			fdev->buffer[fdev->offset] = c;
+			fdev->offset++;
+		} else if (fdev->offset == opts.max_line_length) {
+			// no more room, call it a newline
+			fdev->buffer[fdev->offset] = '\n';
+			fdev->offset++;
+		}
+
+		// got a newline! print it
+		if (c == '\n') {
+			assert(fdev->offset > 0);
+			assert(fdev->offset < opts.max_line_length + 2);
+
+			fdev->buffer[fdev->offset] = '\0';
+			print_line_buffer(fdev);
+			fdev->offset = 0;
+		}
+	}
+}
+
+/*
+ * Called by read_active_fd when processing read bytes in group mode.
+ */
+static void
+process_data_group(FdEvent *fdev, char *buf, int bytes)
+{
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+	assert(buf != NULL);
+	assert(bytes > 0);
+
+	static Host *last_host = NULL;
+	static bool newline_printed = true;
+
+	// processing a new host from last time
+	if (last_host != fdev->host) {
+		// print a newline if needed
+		if (!newline_printed) {
+			printf("\n");
+		}
+
+		// print the host name
+		if (!opts.anonymous) {
+			print_host_header(fdev->host);
+			printf("\n");
+		}
+	}
+
+	// write the fd data to stdout
+	printf("%s", fdev_get_color(fdev));
+	fflush(stdout);
+	if (write(STDOUT_FILENO, buf, bytes) < bytes) {
+		err(3, "write failed");
+	}
+	printf("%s", colors.reset);
+
+	// check if a newline was printed, save the last host
+	newline_printed = buf[bytes - 1] == '\n';
+	last_host = fdev->host;
+}
+
+/*
+ * Called by read_active_fd when processing read bytes in join mode.
+ */
+static void
+process_data_join(FdEvent *fdev, char *buf, int bytes)
+{
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+	assert(buf != NULL);
+	assert(bytes > 0);
+
+	// loop data character-by-character
+	for (int i = 0; i < bytes; i++) {
+		char c = buf[i];
+
+		// line is too long
+		if (fdev->offset < opts.max_output_length) {
+			// room for the character
+			fdev->buffer[fdev->offset] = c;
+			fdev->offset++;
+		} else if (fdev->offset == opts.max_line_length) {
+			// no more room, pad it with a nul byte
+			fdev->buffer[fdev->offset] = '\0';
+			fdev->offset++;
+		} else {
+			// we are overbook, just break
+			break;
+		}
+	}
 }
 
 /*
@@ -649,11 +853,8 @@ print_line_buffer(Host *host, char *linebuf, char *color)
 static bool
 read_active_fd(FdEvent *fdev)
 {
-	char *color;
-	char *linebuf;
 	char buf[BUFSIZ];
 	int *fd;
-	int *offset;
 	int bytes;
 	Host *host;
 
@@ -664,16 +865,10 @@ read_active_fd(FdEvent *fdev)
 
 	switch (fdev->type) {
 	case PIPE_STDOUT:
-		color = colors.stdout;
 		fd = &host->stdout_fd;
-		linebuf = host->stdout;
-		offset = &host->stdout_offset;
 		break;
 	case PIPE_STDERR:
-		color = colors.stderr;
 		fd = &host->stderr_fd;
-		linebuf = host->stderr;
-		offset = &host->stderr_offset;
 		break;
 	default:
 		errx(3, "unknown type %d", fdev->type);
@@ -686,22 +881,42 @@ read_active_fd(FdEvent *fdev)
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
 			close(*fd);
 			*fd = -2;
-			fdev_destroy(fdev);
 
-			// print any remaining data
-			if (opts.mode == MODE_LINE_BY_LINE && *offset > 0) {
-				// put a newline if it didn't have one
-				if (linebuf[*offset - 1] != '\n') {
-					linebuf[*offset] = '\n';
-					*offset = *offset + 1;
+			switch (opts.mode) {
+			case MODE_LINE_BY_LINE:
+				// print any remaining data in line-by-line mode
+				if (fdev->offset == 0) {
+					break;
 				}
-				assert(*offset < opts.max_line_length + 2);
 
-				linebuf[*offset] = '\0';
-				print_line_buffer(host, linebuf, color);
-				*offset = 0;
+				// data remaining! put a newline if it didn't have one
+				if (fdev->buffer[fdev->offset - 1] != '\n') {
+					fdev->buffer[fdev->offset] = '\n';
+					fdev->offset++;
+				}
+				assert(fdev->offset < opts.max_line_length + 2);
+
+				fdev->buffer[fdev->offset] = '\0';
+				print_line_buffer(fdev);
+				fdev->offset = 0;
+				break;
+			case MODE_GROUP:
+				// nothing to do
+				break;
+			case MODE_JOIN:
+				// copy fdev buffer to host object for later analysis
+				switch (fdev->type) {
+				case PIPE_STDOUT: host->stdout = fdev->buffer; break;
+				case PIPE_STDERR: host->stderr = fdev->buffer; break;
+				default: errx(3, "unknown type %d", fdev->type);
+				}
+				fdev->buffer = NULL;
+				break;
+			default:
+				errx(3, "unknown mode: %d", opts.mode);
 			}
-			free(linebuf);
+
+			fdev_destroy(fdev);
 
 			return true;
 		}
@@ -711,65 +926,20 @@ read_active_fd(FdEvent *fdev)
 			continue;
 		}
 
-		// print the data to stdout
+		// handle bytes in different modes
 		switch (opts.mode) {
 		case MODE_JOIN:
-			// loop data character-by-character
+			assert(fdev->buffer != NULL);
+
+			process_data_join(fdev, buf, bytes);
 			break;
 		case MODE_LINE_BY_LINE:
-			// loop data character-by-character
-			for (int i = 0; i < bytes; i++) {
-				char c = buf[i];
+			assert(fdev->buffer != NULL);
 
-				// line is too long
-				if (*offset < opts.max_line_length) {
-					linebuf[*offset] = c;
-					*offset = *offset + 1;
-				} else if (*offset == opts.max_line_length) {
-					linebuf[*offset] = '\n';
-					*offset = *offset + 1;
-				}
-
-				// got a newline! print it
-				if (c == '\n') {
-					assert(*offset > 0);
-					assert(*offset < opts.max_line_length + 2);
-
-					linebuf[*offset] = '\0';
-					print_line_buffer(host, linebuf, color);
-					*offset = 0;
-				}
-			}
+			process_data_line_by_line(fdev, buf, bytes);
 			break;
 		case MODE_GROUP: {
-			static Host *last_host = NULL;
-			static bool newline_printed = true;
-
-			// processing a new host from last time
-			if (last_host != host) {
-				// print a newline if needed
-				if (!newline_printed) {
-					printf("\n");
-				}
-
-				// print the host name
-				if (!opts.anonymous) {
-					print_host_header(host);
-					printf("\n");
-				}
-			}
-
-			// write the fd data to stdout
-			printf("%s", color);
-			fflush(stdout);
-			if (write(STDOUT_FILENO, buf, bytes) < bytes) {
-				err(3, "write failed");
-			}
-			printf("%s", colors.reset);
-
-			// check if a newline was printed, save the last host
-			newline_printed = buf[bytes - 1] == '\n';
-			last_host = host;
+			process_data_group(fdev, buf, bytes);
 			break;
 		}
 		default:
@@ -789,14 +959,12 @@ read_active_fd(FdEvent *fdev)
 }
 
 /*
- * Check if the given Host object has had both of its stdio pipes closed.
+ * Finish analysis for join mode.
  */
-static bool
-host_stdio_done(Host *h)
+static void
+join_mode_finish()
 {
-	assert(h != NULL);
-
-	return h->stdout_fd == -2 && h->stderr_fd == -2;
+	printf("TODO finishthis\n");
 }
 
 /*
@@ -1157,6 +1325,10 @@ main(int argc, char **argv)
 		}
 		printf("]\n");
 
+		// print mode
+		DEBUG("mode: %s%s%s\n",
+		    colors.value, prog_mode_to_string(opts.mode), colors.reset);
+
 		// print max jobs
 		DEBUG("max-jobs: %s%d%s\n",
 		    colors.value, opts.max_jobs, colors.reset);
@@ -1167,6 +1339,11 @@ main(int argc, char **argv)
 
 	// tidy up
 	close(epoll_fd);
+
+	// handle join mode if applicable
+	if (opts.mode == MODE_JOIN) {
+		join_mode_finish();
+	}
 
 	// free memory
 	host = hosts;
