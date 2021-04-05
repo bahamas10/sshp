@@ -75,8 +75,9 @@ enum ProgMode {
  * Pipe types.
  */
 enum PipeType {
-	PIPE_STDOUT = 1,
-	PIPE_STDERR
+	PIPE_STDOUT = 1,	// stdout pipe
+	PIPE_STDERR,		// stderr pipe
+	PIPE_STDIO		// both stdout and stderr (used in join mode)
 };
 
 /*
@@ -88,8 +89,8 @@ typedef struct host {
 	int num_fds;
 	int stdout_fd;
 	int stderr_fd;
-	char *stdout;
-	char *stderr;
+	int stdio_fd;
+	char *output;
 	int exit_code;
 	long started_time;	// monotonic time (in ms) when child forked
 	long finished_time;	// monotonic time (in ms) when child reaped
@@ -330,13 +331,13 @@ host_create(const char *name)
 	host->name = name_dup;
 	host->stdout_fd = -1;
 	host->stderr_fd = -1;
+	host->stdio_fd = -1;
 	host->pid = -1;
 	host->exit_code = -1;
 	host->next = NULL;
 	host->started_time = -1;
 	host->finished_time = -1;
-	host->stdout = NULL;
-	host->stderr = NULL;
+	host->output = NULL;
 
 	return host;
 }
@@ -349,7 +350,7 @@ host_stdio_done(Host *h)
 {
 	assert(h != NULL);
 
-	return h->stdout_fd == -2 && h->stderr_fd == -2;
+	return (h->stdout_fd == -2 && h->stderr_fd == -2) || h->stdio_fd == -2;
 }
 
 /*
@@ -365,11 +366,8 @@ host_destroy(Host *host)
 	free(host->name);
 	host->name = NULL;
 
-	free(host->stdout);
-	host->stdout = NULL;
-
-	free(host->stderr);
-	host->stderr = NULL;
+	free(host->output);
+	host->output = NULL;
 }
 
 /*
@@ -417,6 +415,7 @@ fdev_get_fd(FdEvent *fdev)
 	switch (fdev->type) {
 	case PIPE_STDOUT: return fdev->host->stdout_fd;
 	case PIPE_STDERR: return fdev->host->stderr_fd;
+	case PIPE_STDIO: return fdev->host->stdio_fd;
 	default: errx(3, "fdev_get_fd unknown fdev->type '%d'", fdev->type);
 	}
 }
@@ -431,6 +430,7 @@ fdev_get_color(FdEvent *fdev)
 	switch (fdev->type) {
 	case PIPE_STDOUT: return colors.stdout;
 	case PIPE_STDERR: return colors.stderr;
+	case PIPE_STDIO: return "";
 	default: errx(3, "fdev_get_color unknown fdev->type '%d'", fdev->type);
 	}
 }
@@ -611,10 +611,12 @@ spawn_child_process(Host *host)
 	command[1] = NULL;
 
 	// create the stdio pipes
-	if (opts.mode == MODE_JOIN) {
+	switch (opts.mode) {
+	case MODE_JOIN:
 		// join mode uses a sharded stdout/stderr pipe
 		make_pipe(stdio_fd);
-	} else {
+		break;
+	default:
 		// all other modes use a pipe per stream
 		make_pipe(stdout_fd);
 		make_pipe(stderr_fd);
@@ -628,10 +630,13 @@ spawn_child_process(Host *host)
 
 	// in child
 	if (pid == 0) {
-		if (dup2(stdout_fd[WRITE_END], STDOUT_FILENO) == -1) {
+		int *out_fd = opts.mode == MODE_JOIN ? stdio_fd : stdout_fd;
+		int *err_fd = opts.mode == MODE_JOIN ? stdio_fd : stderr_fd;
+
+		if (dup2(out_fd[WRITE_END], STDOUT_FILENO) == -1) {
 			err(3, "dup2 stdout");
 		}
-		if (dup2(stderr_fd[WRITE_END], STDERR_FILENO) == -1) {
+		if (dup2(err_fd[WRITE_END], STDERR_FILENO) == -1) {
 			err(3, "dup2 stderr");
 		}
 
@@ -640,15 +645,40 @@ spawn_child_process(Host *host)
 	}
 
 	// in parent
-	// close unused fds
-	close(stdout_fd[WRITE_END]);
-	close(stderr_fd[WRITE_END]);
+
+	// close write ends and save read ends
+	switch (opts.mode) {
+	case MODE_JOIN:
+		close(stdio_fd[WRITE_END]);
+		host->stdio_fd = stdio_fd[READ_END];
+		break;
+	default:
+		close(stdout_fd[WRITE_END]);
+		close(stderr_fd[WRITE_END]);
+		host->stdout_fd = stdout_fd[READ_END];
+		host->stderr_fd = stderr_fd[READ_END];
+		break;
+	}
 
 	// save data
 	host->pid = pid;
-	host->stdout_fd = stdout_fd[READ_END];
-	host->stderr_fd = stderr_fd[READ_END];
 	host->started_time = monotonic_time_ms();
+}
+
+static void
+register_child_process_fd(Host *host, enum PipeType type)
+{
+	// create an epoll event
+	struct epoll_event ev;
+	FdEvent *fdev = fdev_create(host, type);
+	int fd = fdev_get_fd(fdev);
+
+	ev.events = EPOLLIN;
+	ev.data.ptr = fdev;
+
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+		err(3, "epoll_ctl add");
+	}
 }
 
 /*
@@ -658,25 +688,16 @@ spawn_child_process(Host *host)
 static void
 register_child_process_fds(Host *host)
 {
-	enum PipeType types[] = { PIPE_STDOUT, PIPE_STDERR };
-	int count = sizeof (types) / sizeof (types[0]);
-
 	assert(host != NULL);
-	assert(host->stdout_fd >= 0);
-	assert(host->stderr_fd >= 0);
 
-	for (int i = 0; i < count; i++) {
-		// create an epoll event
-		struct epoll_event ev;
-		FdEvent *fdev = fdev_create(host, types[i]);
-		int fd = fdev_get_fd(fdev);
-
-		ev.events = EPOLLIN;
-		ev.data.ptr = fdev;
-
-		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
-			err(3, "epoll_ctl add");
-		}
+	switch (opts.mode) {
+	case MODE_JOIN:
+		register_child_process_fd(host, PIPE_STDIO);
+		break;
+	default:
+		register_child_process_fd(host, PIPE_STDOUT);
+		register_child_process_fd(host, PIPE_STDERR);
+		break;
 	}
 }
 
@@ -879,6 +900,9 @@ read_active_fd(FdEvent *fdev)
 	case PIPE_STDERR:
 		fd = &host->stderr_fd;
 		break;
+	case PIPE_STDIO:
+		fd = &host->stdio_fd;
+		break;
 	default:
 		errx(3, "unknown type %d", fdev->type);
 	}
@@ -914,11 +938,10 @@ read_active_fd(FdEvent *fdev)
 				break;
 			case MODE_JOIN:
 				// copy fdev buffer to host object for later analysis
-				switch (fdev->type) {
-				case PIPE_STDOUT: host->stdout = fdev->buffer; break;
-				case PIPE_STDERR: host->stderr = fdev->buffer; break;
-				default: errx(3, "unknown type %d", fdev->type);
+				if (fdev->offset <= opts.max_output_length) {
+					fdev->buffer[fdev->offset] = '\0';
 				}
+				host->output = fdev->buffer;
 				fdev->buffer = NULL;
 				break;
 			default:
@@ -974,6 +997,12 @@ static void
 join_mode_finish()
 {
 	printf("TODO finishthis\n");
+
+	// loop the hosts to check their output
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		printf("host %s done\n--------\n%s\n-------\n",
+		    h->name, h->output);
+	}
 }
 
 /*
@@ -1065,25 +1094,6 @@ parse_hosts(FILE *f)
 
 		// create Host
 		host = host_create(hostname);
-
-		// initailize stdio buffers
-		switch (opts.mode) {
-		case MODE_LINE_BY_LINE:
-			host->stdout = safe_malloc(opts.max_line_length + 2,
-			    "host->stdout");
-			host->stderr = safe_malloc(opts.max_line_length + 2,
-			    "host->stderr");
-			break;
-		case MODE_JOIN:
-			host->stdout = safe_malloc(opts.max_output_length + 1,
-			    "host->stdout");
-			host->stderr = safe_malloc(opts.max_output_length + 1,
-			    "host->stderr");
-			break;
-		case MODE_GROUP:
-			// stdio is not buffered in group mode
-			break;
-		}
 
 		// set head of list
 		if (hosts == NULL) {
