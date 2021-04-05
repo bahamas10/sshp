@@ -565,6 +565,21 @@ wait_for_child(Host *host)
 	}
 }
 
+static void
+print_line_buffer(Host *host, char *linebuf, char *color)
+{
+	assert(host != NULL);
+	assert(linebuf != NULL);
+	assert(color != NULL);
+
+	if (!opts.anonymous) {
+		print_host_header(host);
+		printf(" ");
+	}
+
+	printf("%s%s%s", color, linebuf, colors.reset);
+}
+
 /*
  * Read data from FdEvent until end or would-block
  */
@@ -609,6 +624,21 @@ read_active_fd(FdEvent *fdev)
 			close(*fd);
 			*fd = -2;
 
+			// print any remaining data
+			if (opts.mode == MODE_LINE_BY_LINE && *offset > 0) {
+				// put a newline if it didn't have one
+				if (linebuf[*offset - 1] != '\n') {
+					linebuf[*offset] = '\n';
+					*offset = *offset + 1;
+				}
+				assert(*offset < opts.max_line_length + 2);
+
+				linebuf[*offset] = '\0';
+				print_line_buffer(host, linebuf, color);
+				*offset = 0;
+			}
+			free(linebuf);
+
 			return true;
 		}
 
@@ -619,28 +649,30 @@ read_active_fd(FdEvent *fdev)
 
 		// print the data to stdout
 		switch (opts.mode) {
+		case MODE_JOIN:
+			// loop data character-by-character
+			break;
 		case MODE_LINE_BY_LINE:
 			// loop data character-by-character
 			for (int i = 0; i < bytes; i++) {
 				char c = buf[i];
-				linebuf[*offset] = c;
-				*offset = *offset + 1;
 
 				// line is too long
-				if (*offset >= opts.max_line_length) {
-					linebuf[opts.max_line_length] = '\n';
-					linebuf[opts.max_line_length + 1] = '\0';
+				if (*offset < opts.max_line_length) {
+					linebuf[*offset] = c;
+					*offset = *offset + 1;
+				} else if (*offset == opts.max_line_length) {
+					linebuf[*offset] = '\n';
+					*offset = *offset + 1;
 				}
 
 				// got a newline! print it
 				if (c == '\n') {
+					assert(*offset > 0);
+					assert(*offset < opts.max_line_length + 2);
+
 					linebuf[*offset] = '\0';
-					if (!opts.anonymous) {
-						print_host_header(host);
-						printf(" ");
-					}
-					printf("%s%s%s", color, linebuf,
-					    colors.reset);
+					print_line_buffer(host, linebuf, color);
 					*offset = 0;
 				}
 			}
@@ -752,6 +784,50 @@ main_loop()
 	}
 }
 
+static Host *
+host_create(const char *name)
+{
+	assert(name != NULL);
+
+	Host *host = safe_malloc(sizeof (Host), "host_create");
+	char *name_dup = strdup(name);
+
+	if (name_dup == NULL) {
+		err(3, "strdup hostname %s", name);
+	}
+
+	// initalize host
+	host->name = name_dup;
+	host->stdout_fd = -1;
+	host->stderr_fd = -1;
+	host->pid = -1;
+	host->exit_code = -1;
+	host->next = NULL;
+	host->started_time = -1;
+	host->finished_time = -1;
+	host->stdout = NULL;
+	host->stderr = NULL;
+	host->stderr_offset = 0;
+	host->stdout_offset = 0;
+
+	return host;
+}
+
+static void
+host_destroy(Host *host)
+{
+	if (host == NULL) {
+		return;
+	}
+
+	if (host->name != NULL) {
+		free(host->name);
+		host->name = NULL;
+	}
+
+	free(host);
+}
+
 /*
  * Parse the hosts file and create the Host structs
  */
@@ -778,8 +854,6 @@ parse_hosts(FILE *f)
 			goto next;
 		}
 
-		host = safe_malloc(sizeof (Host), "Host");
-
 		/*
 		 * remove the ending newline - if a newline is not present the
 		 * line is too long
@@ -789,23 +863,8 @@ parse_hosts(FILE *f)
 			    lineno, HOST_NAME_MAX, hostname);
 		}
 
-		// initalize host
-		host->name = strdup(hostname);
-		host->stdout_fd = -1;
-		host->stderr_fd = -1;
-		host->pid = -1;
-		host->exit_code = -1;
-		host->next = NULL;
-		host->started_time = -1;
-		host->finished_time = -1;
-		host->stdout = NULL;
-		host->stderr = NULL;
-		host->stderr_offset = 0;
-		host->stdout_offset = 0;
-
-		if (host->name == NULL) {
-			err(3, "strdup hostname %s", hostname);
-		}
+		// create Host
+		host = host_create(hostname);
 
 		// initailize stdio buffers
 		switch (opts.mode) {
@@ -816,9 +875,9 @@ parse_hosts(FILE *f)
 			    "host->stderr");
 			break;
 		case MODE_JOIN:
-			host->stdout = safe_malloc(opts.max_output_length,
+			host->stdout = safe_malloc(opts.max_output_length + 1,
 			    "host->stdout");
-			host->stderr = safe_malloc(opts.max_output_length,
+			host->stderr = safe_malloc(opts.max_output_length + 1,
 			    "host->stderr");
 			break;
 		case MODE_GROUP:
@@ -971,6 +1030,7 @@ main(int argc, char **argv)
 	long end_time;
 	long start_time;
 	int num_hosts;
+	Host *host;
 
 	// record start time
 	start_time = monotonic_time_ms();
@@ -1084,6 +1144,14 @@ main(int argc, char **argv)
 
 	// tidy up
 	close(epoll_fd);
+
+	// free memory
+	host = hosts;
+	while (host != NULL) {
+		Host *temp = host->next;
+		host_destroy(host);
+		host = temp;
+	}
 
 	// get end time and calculate time taken
 	end_time = monotonic_time_ms();
