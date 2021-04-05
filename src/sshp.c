@@ -120,6 +120,8 @@ static int epoll_fd;
 // CLI options for getopt_long
 static char *short_options = "ac:def:ghi:jl:m:nNp:qstvy";
 static struct option long_options[] = {
+	{"max-line-length", required_argument, NULL, 1000},
+	{"max-output-length", required_argument, NULL, 1001},
 	{"anonymous", no_argument, NULL, 'a'},
 	{"color", required_argument, NULL, 'c'},
 	{"debug", no_argument, NULL, 'd'},
@@ -618,16 +620,19 @@ read_active_fd(FdEvent *fdev)
 		// print the data to stdout
 		switch (opts.mode) {
 		case MODE_LINE_BY_LINE:
+			// loop data character-by-character
 			for (int i = 0; i < bytes; i++) {
 				char c = buf[i];
 				linebuf[*offset] = c;
-
 				*offset = *offset + 1;
-				if (*offset >= opts.max_line_length - 2) {
-					linebuf[opts.max_line_length - 2] = '\n';
-					linebuf[opts.max_line_length - 1] = '\0';
+
+				// line is too long
+				if (*offset >= opts.max_line_length) {
+					linebuf[opts.max_line_length] = '\n';
+					linebuf[opts.max_line_length + 1] = '\0';
 				}
 
+				// got a newline! print it
 				if (c == '\n') {
 					linebuf[*offset] = '\0';
 					if (!opts.anonymous) {
@@ -805,9 +810,9 @@ parse_hosts(FILE *f)
 		// initailize stdio buffers
 		switch (opts.mode) {
 		case MODE_LINE_BY_LINE:
-			host->stdout = safe_malloc(opts.max_line_length,
+			host->stdout = safe_malloc(opts.max_line_length + 2,
 			    "host->stdout");
-			host->stderr = safe_malloc(opts.max_line_length,
+			host->stderr = safe_malloc(opts.max_line_length + 2,
 			    "host->stderr");
 			break;
 		case MODE_JOIN:
