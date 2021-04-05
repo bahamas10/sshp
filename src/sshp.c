@@ -21,21 +21,26 @@
 #include <time.h>
 #include <unistd.h>
 
-// version
-#define SSHP_VERSION "v0.0.0"
+// app detauls
+#define PROG_NAME      "sshp"
+#define PROG_VERSION   "v0.0.0"
+#define PROG_FULL_NAME "Parallel SSH Manager"
+#define PROG_SOURCE    "https://github.com/bahamas10/sshp"
+#define PROG_LICENSE   "MIT License"
 
-// epoll max events
-#define EPOLL_MAX_EVENTS 50
+// epoll options
+#define EPOLL_MAX_EVENTS    50
 #define EPOLL_WAIT_TIMEOUT -1
 
 // maximum number of arguments for a child process
 #define MAX_ARGS 256
 
-// maximum number of characters to process in line-by-line mode
-#define MAX_LINE_LENGTH 1024
+// max characters to process in line-by-line and join mode respectively
+#define DEFAULT_MAX_LINE_LENGTH   (1 * 1024) // 1k
+#define DEFAULT_MAX_OUTPUT_LENGTH (8 * 1024) // 8k
 
 // pipe ends
-#define READ_END 0
+#define READ_END  0
 #define WRITE_END 1
 
 // ANSI color codes
@@ -139,6 +144,8 @@ static struct option long_options[] = {
 
 // options set via CLI opts
 static struct opts {
+	int max_line_length;
+	int max_output_length;
 	bool anonymous;
 	char *color;
 	bool debug;
@@ -178,43 +185,80 @@ static struct colors {
 static void
 print_usage(FILE *s)
 {
-	fprintf(s,
-		"Usage: sshp [-m maxjobs] [-f file] command ...\n"
-		"\n"
-		"parallel ssh with streaming output\n"
-		"\n"
-		"examples\n"
-		"  ssh into a list of hosts passed via stdin and get the output of `uname -v`\n"
-		"\n"
-		"    sshp uname -v < hosts\n"
-		"\n"
-		"  ssh into a list of hosts passed on the command line, limit max parallel\n"
-		"  connections to 3, and grab the output of ps piped to grep on the remote end\n"
-		"\n"
-		"    sshp -m 3 -f my_hosts.txt \"ps -ef | grep process\"\n"
-		"\n"
-		"options\n"
-		"  -a, --anonymous   hide hostname prefix, defaults to false\n"
-		"  -d, --debug       turn on debugging information, defaults to false\n"
-		"  -e, --exit-codes  print the exit code of the remote processes, defaults to false\n"
-		"  -f, --file        a file of hosts separated by newlines, defaults to stdin\n"
-		"  -g, --group       group the output together as it comes in by hostname, not line-by-line\n"
-		"  -h, --help        print this message and exit\n"
-		"  -j, --join        join hosts together by unique output (aggregation mode)\n"
-		"  -m, --max-jobs    the maximum number of jobs to run concurrently, defaults to 300\n"
-		"  -n, --dry-run     print debug information without actually running any commands\n"
-		"  -N, --no-strict   disable strict host key checking for ssh, defaults to false\n"
-		"  -s, --silent      silence all stdout and stderr from remote hosts, defaults to false\n"
-		"  -t, --trim        trim hostnames from fqdn to short name (remove domain), defaults to false\n"
-		"  -v, --version     print the version number and exit\n"
-		"\n"
-		"ssh options (options passed directly to ssh)\n"
-		"  -i, --identity    ssh identity file to use\n"
-		"  -l, --login       the username to login as\n"
-		"  -q, --quiet       run ssh in quiet mode\n"
-		"  -p, --port        the ssh port\n"
-		"  -y, --tty         allocate a pseudo-tty for the ssh session\n"
-	);
+	// print banner
+	fprintf(s, "%s        _         %s\n", colors.important, colors.reset);
+	fprintf(s, "%s  _____| |_  _ __ %s   ", colors.important, colors.reset);
+	fprintf(s, "%s %s (%s)%s\n", colors.good, PROG_FULL_NAME, PROG_VERSION, colors.reset);
+	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", colors.important, colors.reset);
+	fprintf(s, "%s Source: %s%s\n", colors.good, PROG_SOURCE, colors.reset);
+	fprintf(s, "%s /__/__/_||_| .__/%s   ", colors.important, colors.reset);
+	fprintf(s, "%s %s%s\n", colors.good, PROG_LICENSE, colors.reset);
+	fprintf(s, "%s            |_|   %s   \n", colors.important, colors.reset);
+	fprintf(s, "\n");
+	fprintf(s, "Parallel ssh with streaming output\n");
+	fprintf(s, "\n");
+	// usage
+	fprintf(s, "%sUSAGE:%s\n", colors.host, colors.reset);
+	fprintf(s, "%s    sshp [-m maxjobs] [-f file] command ...%s\n", colors.good, colors.reset);
+	fprintf(s, "\n");
+	// examples
+	fprintf(s, "%sEXAMPLES:%s\n", colors.host, colors.reset);
+	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of `uname -v`\n");
+	fprintf(s, "\n");
+	fprintf(s, "%s      sshp uname -v < hosts%s\n", colors.good, colors.reset);
+	fprintf(s, "\n");
+	fprintf(s, "    ssh into a list of hosts passed on the command line, limit max parallel\n");
+	fprintf(s, "    connections to 3, and grab the output of pgrep\n");
+	fprintf(s, "\n");
+	fprintf(s, "%s      sshp -m 3 -f hosts.txt pgrep -fl process%s\n", colors.good, colors.reset);
+	fprintf(s, "\n");
+	// options
+	fprintf(s, "%sOPTIONS:%s\n", colors.host, colors.reset);
+	fprintf(s, "%s  -a, --anonymous            %s", colors.good, colors.reset);
+	fprintf(s, "hide hostname prefix, defaults to false\n");
+	fprintf(s, "%s  -d, --debug                %s", colors.good, colors.reset);
+	fprintf(s, "turn on debugging information, defaults to false\n");
+	fprintf(s, "%s  -e, --exit-codes           %s", colors.good, colors.reset);
+	fprintf(s, "print the exit code of the remote processes, defaults to false\n");
+	fprintf(s, "%s  -f, --file <file>          %s", colors.good, colors.reset);
+	fprintf(s, "a file of hosts separated by newlines, defaults to stdin\n");
+	fprintf(s, "%s  -g, --group                %s", colors.good, colors.reset);
+	fprintf(s, "group the output together as it comes in by hostname, not line-by-line\n");
+	fprintf(s, "%s  -h, --help                 %s", colors.good, colors.reset);
+	fprintf(s, "print this message and exit\n");
+	fprintf(s, "%s  -j, --join                 %s", colors.good, colors.reset);
+	fprintf(s, "join hosts together by unique output (aggregation mode)\n");
+	fprintf(s, "%s  -m, --max-jobs <num>       %s", colors.good, colors.reset);
+	fprintf(s, "the maximum number of jobs to run concurrently, defaults to 300\n");
+	fprintf(s, "%s  -n, --dry-run              %s", colors.good, colors.reset);
+	fprintf(s, "print debug information without actually running any commands\n");
+	fprintf(s, "%s  -N, --no-strict            %s", colors.good, colors.reset);
+	fprintf(s, "disable strict host key checking for ssh, defaults to false\n");
+	fprintf(s, "%s  -s, --silent               %s", colors.good, colors.reset);
+	fprintf(s, "silence all stdout and stderr from remote hosts, defaults to false\n");
+	fprintf(s, "%s  -t, --trim                 %s", colors.good, colors.reset);
+	fprintf(s, "trim hostnames from fqdn to short name (remove domain), defaults to false\n");
+	fprintf(s, "%s  -v, --version              %s", colors.good, colors.reset);
+	fprintf(s, "print the version number and exit\n");
+	fprintf(s, "%s  --max-line-length <num>    %s", colors.good, colors.reset);
+	fprintf(s, "maximum line length (in line-by-line mode only), defaults to %d\n",
+	    DEFAULT_MAX_LINE_LENGTH);
+	fprintf(s, "%s  --max-output-length <num>  %s", colors.good, colors.reset);
+	fprintf(s, "maximum output length (in join mode only), defaults to %d\n",
+	    DEFAULT_MAX_OUTPUT_LENGTH);
+	fprintf(s, "\n");
+	// ssh options
+	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n", colors.host, colors.reset);
+	fprintf(s, "%s  -i, --identity <ident>     %s", colors.good, colors.reset);
+	fprintf(s, "ssh identity file to use\n");
+	fprintf(s, "%s  -l, --login <name>         %s", colors.good, colors.reset);
+	fprintf(s, "the username to login as\n");
+	fprintf(s, "%s  -q, --quiet                %s", colors.good, colors.reset);
+	fprintf(s, "run ssh in quiet mode\n");
+	fprintf(s, "%s  -p, --port <port>          %s", colors.good, colors.reset);
+	fprintf(s, "the ssh port\n");
+	fprintf(s, "%s  -y, --tty                  %s", colors.good, colors.reset);
+	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
 }
 
 /*
@@ -329,8 +373,7 @@ print_host_header(Host *host)
 /*
  * Optionally print the header for a given host.  This is used by "group" mode
  * to print the host only if it wasn't already printed.
- */
-static void
+static bool
 try_print_host_header(Host *host)
 {
 	static char *last_host_printed = NULL;
@@ -341,10 +384,13 @@ try_print_host_header(Host *host)
 	    last_host_printed != host->name) {
 
 		print_host_header(host);
-		printf("\n");
 		last_host_printed = host->name;
+		return true;
 	}
+
+	return false;
 }
+ */
 
 /*
  * Given an FdEvent pointer return the event relevant fd.
@@ -413,6 +459,9 @@ spawn_child_process(Host *host)
 	command[1] = "-lha";
 	command[2] = "/proc/self/fd";
 	command[3] = NULL;
+
+	command[0] = "./prog";
+	command[1] = NULL;
 
 	// create the stdio pipes
 	make_pipe(stdout_fd);
@@ -550,6 +599,7 @@ read_active_fd(FdEvent *fdev)
 		errx(3, "unknown type %d", fdev->type);
 	}
 
+	// loop while bytes available
 	while ((bytes = read(*fd, buf, BUFSIZ)) > -1) {
 		// done reading!
 		if (bytes == 0) {
@@ -560,6 +610,11 @@ read_active_fd(FdEvent *fdev)
 			return true;
 		}
 
+		// do nothing if in silent mode
+		if (opts.silent) {
+			continue;
+		}
+
 		// print the data to stdout
 		switch (opts.mode) {
 		case MODE_LINE_BY_LINE:
@@ -568,29 +623,54 @@ read_active_fd(FdEvent *fdev)
 				linebuf[*offset] = c;
 
 				*offset = *offset + 1;
-				if (*offset >= MAX_LINE_LENGTH - 2) {
-					linebuf[MAX_LINE_LENGTH - 2] = '\n';
-					linebuf[MAX_LINE_LENGTH - 1] = '\0';
+				if (*offset >= opts.max_line_length - 2) {
+					linebuf[opts.max_line_length - 2] = '\n';
+					linebuf[opts.max_line_length - 1] = '\0';
 				}
 
 				if (c == '\n') {
 					linebuf[*offset] = '\0';
-					print_host_header(host);
-					printf(" %s%s%s", color, linebuf,
+					if (!opts.anonymous) {
+						print_host_header(host);
+						printf(" ");
+					}
+					printf("%s%s%s", color, linebuf,
 					    colors.reset);
 					*offset = 0;
 				}
 			}
 			break;
-		case MODE_GROUP:
-			try_print_host_header(host);
+		case MODE_GROUP: {
+			static Host *last_host = NULL;
+			static bool newline_printed = true;
+
+			// processing a new host from last time
+			if (last_host != host) {
+				// print a newline if needed
+				if (!newline_printed) {
+					printf("\n");
+				}
+
+				// print the host name
+				if (!opts.anonymous) {
+					print_host_header(host);
+					printf("\n");
+				}
+			}
+
+			// write the fd data to stdout
 			printf("%s", color);
 			fflush(stdout);
 			if (write(STDOUT_FILENO, buf, bytes) < bytes) {
 				err(3, "write failed");
 			}
 			printf("%s", colors.reset);
+
+			// check if a newline was printed, save the last host
+			newline_printed = buf[bytes - 1] == '\n';
+			last_host = host;
 			break;
+		}
 		default:
 			errx(3, "unknown mode: %d", opts.mode);
 			break;
@@ -653,7 +733,9 @@ main_loop()
 			FdEvent *fdev = ev.data.ptr;
 			Host *host = fdev->host;
 
-			// exhaust the active fd of all data or until it would block
+			assert(host != NULL);
+
+			// read the active fd until it would block or is done
 			bool fd_closed = read_active_fd(fdev);
 
 			// check if the childs stdio is done and reap it
@@ -720,14 +802,22 @@ parse_hosts(FILE *f)
 			err(3, "strdup hostname %s", hostname);
 		}
 
+		// initailize stdio buffers
 		switch (opts.mode) {
 		case MODE_LINE_BY_LINE:
-			host->stdout = safe_malloc(MAX_LINE_LENGTH, "host->stdout");
-			host->stderr = safe_malloc(MAX_LINE_LENGTH, "host->stderr");
-			break;
-		case MODE_GROUP:
+			host->stdout = safe_malloc(opts.max_line_length,
+			    "host->stdout");
+			host->stderr = safe_malloc(opts.max_line_length,
+			    "host->stderr");
 			break;
 		case MODE_JOIN:
+			host->stdout = safe_malloc(opts.max_output_length,
+			    "host->stdout");
+			host->stderr = safe_malloc(opts.max_output_length,
+			    "host->stderr");
+			break;
+		case MODE_GROUP:
+			// stdio is not buffered in group mode
 			break;
 		}
 
@@ -763,19 +853,23 @@ static void
 parse_arguments(int argc, char **argv)
 {
 	int opt;
+	bool help_option = false;
+	bool unknown_option = false;
 
 	// get options
 	while ((opt = getopt_long(argc, argv, short_options, long_options,
 	    NULL)) != -1) {
 
 		switch (opt) {
+		case 1000: opts.max_line_length = atoi(optarg); break;
+		case 1001: opts.max_output_length = atoi(optarg); break;
 		case 'a': opts.anonymous = true; break;
 		case 'c': opts.color = optarg; break;
 		case 'd': opts.debug = true; break;
 		case 'e': opts.exit_codes = true; break;
 		case 'f': opts.file = optarg; break;
 		case 'g': opts.group = true; break;
-		case 'h': print_usage(stdout); exit(0);
+		case 'h': help_option = true; break;
 		case 'i': opts.identity = optarg; break;
 		case 'j': opts.join = true; break;
 		case 'l': opts.login = optarg; break;
@@ -786,9 +880,9 @@ parse_arguments(int argc, char **argv)
 		case 'q': opts.quiet = true; break;
 		case 's': opts.silent = true; break;
 		case 't': opts.trim = true; break;
-		case 'v': printf("%s\n", SSHP_VERSION); exit(0);
+		case 'v': printf("%s\n", PROG_VERSION); exit(0);
 		case 'y': opts.tty = true; break;
-		default: print_usage(stderr); exit(2);
+		default: unknown_option = true; break;
 		}
 	}
 	argc -= optind;
@@ -796,7 +890,7 @@ parse_arguments(int argc, char **argv)
 
 	// sanity check options
 	if (opts.max_jobs < 1) {
-		errx(2, "invalid value for '-m': '%d'", opts.max_jobs);
+		errx(2, "invalid value for `-m`: '%d'", opts.max_jobs);
 	}
 	if (opts.join && opts.group) {
 		errx(2, "`-j` and `-g` are mutually exclusive");
@@ -804,8 +898,16 @@ parse_arguments(int argc, char **argv)
 	if (opts.join && opts.silent) {
 		errx(2, "`-j` and `-s` are mutually exclusive");
 	}
-	if (argc < 1) {
-		errx(2, "no command specified");
+	if (opts.join && opts.anonymous) {
+		errx(2, "`-j` and `-a` are mutually exclusive");
+	}
+	if (opts.max_line_length <= 0) {
+		errx(2, "invalid value for `--max-line-length`: %d",
+		    opts.max_line_length);
+	}
+	if (opts.max_output_length <= 0) {
+		errx(2, "invalid value for `--max-output-length`: %d",
+		    opts.max_output_length);
 	}
 
 	// set current sshp mode
@@ -836,6 +938,19 @@ parse_arguments(int argc, char **argv)
 		errx(2, "invalid value for '-c': '%s'", opts.color);
 	}
 
+	// -h or unknown option
+	if (unknown_option) {
+		print_usage(stderr);
+		exit(2);
+	} else if (help_option) {
+		print_usage(stdout);
+		exit(0);
+	}
+
+	if (argc < 1) {
+		errx(2, "no command specified");
+	}
+
 	// save the remaining arguments as the command
 	remote_command = argv;
 }
@@ -856,6 +971,8 @@ main(int argc, char **argv)
 	start_time = monotonic_time_ms();
 
 	// initalize options
+	opts.max_line_length = DEFAULT_MAX_LINE_LENGTH;
+	opts.max_output_length = DEFAULT_MAX_OUTPUT_LENGTH;
 	opts.anonymous = false;
 	opts.color = NULL;
 	opts.debug = false;
