@@ -182,6 +182,92 @@ static struct colors {
 } colors;
 
 /*
+ * Wrapper for malloc that takes an error message as the second argument and
+ * exits on failure.
+ */
+static void *
+safe_malloc(size_t size, const char *msg)
+{
+	void *ptr;
+
+	assert(size > 0);
+	assert(msg != NULL);
+
+	ptr = malloc(size);
+
+	if (ptr == NULL) {
+		err(3, "malloc %s", msg);
+	}
+
+	return ptr;
+}
+
+
+static FdEvent *
+fdev_create(Host *host, enum PipeType type)
+{
+	assert(host != NULL);
+
+	FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
+
+	fdev->host = host;
+	fdev->type = type;
+
+	return fdev;
+}
+
+static void
+fdev_destroy(FdEvent *fdev)
+{
+	free(fdev);
+}
+
+
+static Host *
+host_create(const char *name)
+{
+	assert(name != NULL);
+
+	Host *host = safe_malloc(sizeof (Host), "host_create");
+	char *name_dup = strdup(name);
+
+	if (name_dup == NULL) {
+		err(3, "strdup hostname %s", name);
+	}
+
+	// initalize host
+	host->name = name_dup;
+	host->stdout_fd = -1;
+	host->stderr_fd = -1;
+	host->pid = -1;
+	host->exit_code = -1;
+	host->next = NULL;
+	host->started_time = -1;
+	host->finished_time = -1;
+	host->stdout = NULL;
+	host->stderr = NULL;
+	host->stderr_offset = 0;
+	host->stdout_offset = 0;
+
+	return host;
+}
+
+static void
+host_destroy(Host *host)
+{
+	if (host == NULL) {
+		return;
+	}
+
+	if (host->name != NULL) {
+		free(host->name);
+		host->name = NULL;
+	}
+
+	free(host);
+}
+
+/*
  * Print the usages message to the given filestream
  */
 static void
@@ -261,27 +347,6 @@ print_usage(FILE *s)
 	fprintf(s, "the ssh port\n");
 	fprintf(s, "%s  -y, --tty                  %s", colors.good, colors.reset);
 	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
-}
-
-/*
- * Wrapper for malloc that takes an error message as the second argument and
- * exits on failure.
- */
-static void *
-safe_malloc(size_t size, const char *msg)
-{
-	void *ptr;
-
-	assert(size > 0);
-	assert(msg != NULL);
-
-	ptr = malloc(size);
-
-	if (ptr == NULL) {
-		err(3, "malloc %s", msg);
-	}
-
-	return ptr;
 }
 
 /*
@@ -517,15 +582,11 @@ register_child_process_fds(Host *host)
 	for (int i = 0; i < count; i++) {
 		// create an epoll event
 		struct epoll_event ev;
-		FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
+		FdEvent *fdev = fdev_create(host, types[i]);
+		int fd = fdev_get_fd(fdev);
 
 		ev.events = EPOLLIN;
 		ev.data.ptr = fdev;
-
-		fdev->host = host;
-		fdev->type = types[i];
-
-		int fd = fdev_get_fd(fdev);
 
 		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
 			err(3, "epoll_ctl add");
@@ -623,6 +684,7 @@ read_active_fd(FdEvent *fdev)
 			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
 			close(*fd);
 			*fd = -2;
+			fdev_destroy(fdev);
 
 			// print any remaining data
 			if (opts.mode == MODE_LINE_BY_LINE && *offset > 0) {
@@ -784,49 +846,6 @@ main_loop()
 	}
 }
 
-static Host *
-host_create(const char *name)
-{
-	assert(name != NULL);
-
-	Host *host = safe_malloc(sizeof (Host), "host_create");
-	char *name_dup = strdup(name);
-
-	if (name_dup == NULL) {
-		err(3, "strdup hostname %s", name);
-	}
-
-	// initalize host
-	host->name = name_dup;
-	host->stdout_fd = -1;
-	host->stderr_fd = -1;
-	host->pid = -1;
-	host->exit_code = -1;
-	host->next = NULL;
-	host->started_time = -1;
-	host->finished_time = -1;
-	host->stdout = NULL;
-	host->stderr = NULL;
-	host->stderr_offset = 0;
-	host->stdout_offset = 0;
-
-	return host;
-}
-
-static void
-host_destroy(Host *host)
-{
-	if (host == NULL) {
-		return;
-	}
-
-	if (host->name != NULL) {
-		free(host->name);
-		host->name = NULL;
-	}
-
-	free(host);
-}
 
 /*
  * Parse the hosts file and create the Host structs
