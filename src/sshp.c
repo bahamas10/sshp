@@ -182,93 +182,7 @@ static struct colors {
 } colors;
 
 /*
- * Wrapper for malloc that takes an error message as the second argument and
- * exits on failure.
- */
-static void *
-safe_malloc(size_t size, const char *msg)
-{
-	void *ptr;
-
-	assert(size > 0);
-	assert(msg != NULL);
-
-	ptr = malloc(size);
-
-	if (ptr == NULL) {
-		err(3, "malloc %s", msg);
-	}
-
-	return ptr;
-}
-
-
-static FdEvent *
-fdev_create(Host *host, enum PipeType type)
-{
-	assert(host != NULL);
-
-	FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
-
-	fdev->host = host;
-	fdev->type = type;
-
-	return fdev;
-}
-
-static void
-fdev_destroy(FdEvent *fdev)
-{
-	free(fdev);
-}
-
-
-static Host *
-host_create(const char *name)
-{
-	assert(name != NULL);
-
-	Host *host = safe_malloc(sizeof (Host), "host_create");
-	char *name_dup = strdup(name);
-
-	if (name_dup == NULL) {
-		err(3, "strdup hostname %s", name);
-	}
-
-	// initalize host
-	host->name = name_dup;
-	host->stdout_fd = -1;
-	host->stderr_fd = -1;
-	host->pid = -1;
-	host->exit_code = -1;
-	host->next = NULL;
-	host->started_time = -1;
-	host->finished_time = -1;
-	host->stdout = NULL;
-	host->stderr = NULL;
-	host->stderr_offset = 0;
-	host->stdout_offset = 0;
-
-	return host;
-}
-
-static void
-host_destroy(Host *host)
-{
-	if (host == NULL) {
-		return;
-	}
-
-	if (host->name != NULL) {
-		free(host->name);
-		host->name = NULL;
-	}
-
-	free(host);
-}
-
-/*
- * Print the usages message to the given filestream
+ * Print the usage message to the given filestream.
  */
 static void
 print_usage(FILE *s)
@@ -350,9 +264,122 @@ print_usage(FILE *s)
 }
 
 /*
+ * Wrapper for malloc that takes an error message as the second argument and
+ * exits on failure.
+ */
+static void *
+safe_malloc(size_t size, const char *msg)
+{
+	void *ptr;
+
+	assert(size > 0);
+	assert(msg != NULL);
+
+	ptr = malloc(size);
+
+	if (ptr == NULL) {
+		err(3, "malloc %s", msg);
+	}
+
+	return ptr;
+}
+
+/*
+ * Allocate and create a new Host object given its hostname.  The hostname will
+ * be copied from the given argument.
+ */
+static Host *
+host_create(const char *name)
+{
+	assert(name != NULL);
+
+	Host *host = safe_malloc(sizeof (Host), "host_create");
+	char *name_dup = strdup(name);
+
+	if (name_dup == NULL) {
+		err(3, "strdup hostname %s", name);
+	}
+
+	// initalize host
+	host->name = name_dup;
+	host->stdout_fd = -1;
+	host->stderr_fd = -1;
+	host->pid = -1;
+	host->exit_code = -1;
+	host->next = NULL;
+	host->started_time = -1;
+	host->finished_time = -1;
+	host->stdout = NULL;
+	host->stderr = NULL;
+	host->stderr_offset = 0;
+	host->stdout_offset = 0;
+
+	return host;
+}
+
+/*
+ * Free an allocated Host object.
+ */
+static void
+host_destroy(Host *host)
+{
+	if (host == NULL) {
+		return;
+	}
+
+	if (host->name != NULL) {
+		free(host->name);
+		host->name = NULL;
+	}
+
+	free(host);
+}
+
+/*
+ * Create and FdEvent object given a host pointer and pipetype.
+ */
+static FdEvent *
+fdev_create(Host *host, enum PipeType type)
+{
+	assert(host != NULL);
+
+	FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
+
+	fdev->host = host;
+	fdev->type = type;
+
+	return fdev;
+}
+
+/*
+ * Given an FdEvent pointer return the event relevant fd.
+ */
+static int
+fdev_get_fd(FdEvent *fdev)
+{
+	assert(fdev != NULL);
+	assert(fdev->host != NULL);
+
+	switch (fdev->type) {
+	case PIPE_STDOUT: return fdev->host->stdout_fd;
+	case PIPE_STDERR: return fdev->host->stderr_fd;
+	default: errx(3, "unknown fdev->type '%d'", fdev->type);
+	}
+}
+
+/*
+ * Free an allocated FdEvent object.
+ */
+static void
+fdev_destroy(FdEvent *fdev)
+{
+	free(fdev);
+}
+
+/*
  * Create a pipe with both ends set to non-blocking and cloexec.
  */
-void
+static void
 make_pipe(int *fd)
 {
 	assert(fd != NULL);
@@ -361,16 +388,16 @@ make_pipe(int *fd)
 		err(3, "pipe");
 	}
 	if (fcntl(fd[READ_END], F_SETFL, O_NONBLOCK) == -1) {
-		err(3, "set nonblocking");
+		err(3, "set read end nonblocking");
 	}
 	if (fcntl(fd[WRITE_END], F_SETFL, O_NONBLOCK) == -1) {
-		err(3, "set nonblocking");
+		err(3, "set write end nonblocking");
 	}
 	if (fcntl(fd[READ_END], F_SETFD, FD_CLOEXEC) == -1) {
-		err(3, "set cloexec");
+		err(3, "set read end cloexec");
 	}
 	if (fcntl(fd[WRITE_END], F_SETFD, FD_CLOEXEC) == -1) {
-		err(3, "set cloexec");
+		err(3, "set write end cloexec");
 	}
 }
 
@@ -395,6 +422,7 @@ push_argument(char *s)
 
 /*
  * Replace the first occurence of '\n' with '\0' in a string.
+ * Returns true if a replacement was made and false otherwise.
  */
 static bool
 trim_newline(char *s)
@@ -411,7 +439,7 @@ trim_newline(char *s)
 }
 
 /*
- * Get the current monotonic time in ms
+ * Get the current monotonic time in ms.
  */
 static long
 monotonic_time_ms()
@@ -435,44 +463,6 @@ print_host_header(Host *host)
 
 	printf("[%s%s%s]", colors.log_id,
 	    host->name, colors.reset);
-}
-
-/*
- * Optionally print the header for a given host.  This is used by "group" mode
- * to print the host only if it wasn't already printed.
-static bool
-try_print_host_header(Host *host)
-{
-	static char *last_host_printed = NULL;
-
-	assert(host != NULL);
-
-	if (last_host_printed == NULL ||
-	    last_host_printed != host->name) {
-
-		print_host_header(host);
-		last_host_printed = host->name;
-		return true;
-	}
-
-	return false;
-}
- */
-
-/*
- * Given an FdEvent pointer return the event relevant fd.
- */
-static int
-fdev_get_fd(FdEvent *fdev)
-{
-	assert(fdev != NULL);
-	assert(fdev->host != NULL);
-
-	switch (fdev->type) {
-	case PIPE_STDOUT: return fdev->host->stdout_fd;
-	case PIPE_STDERR: return fdev->host->stderr_fd;
-	default: errx(3, "unknown fdev->type '%d'", fdev->type);
-	}
 }
 
 /*
@@ -594,6 +584,12 @@ register_child_process_fds(Host *host)
 	}
 }
 
+/*
+ * Call waitpid on the subprocess associated with the given Host object.  This
+ * function will reap the process, set the exit code and remove the pid from
+ * the Host object, and optionally print the exited message if opts.exit_codes
+ * or opts.debug is set.
+ */
 static void
 wait_for_child(Host *host)
 {
@@ -614,6 +610,7 @@ wait_for_child(Host *host)
 	host->pid = -2;
 	host->finished_time = monotonic_time_ms();
 
+	// print the exit message
 	if (opts.exit_codes || opts.debug) {
 		long delta = host->finished_time - host->started_time;
 		char *code_color = host->exit_code == 0 ?
@@ -626,6 +623,11 @@ wait_for_child(Host *host)
 	}
 }
 
+/*
+ * Prints the given linebuf with the given color as well as the host header.
+ *
+ * (used for line-by-line mode).
+ */
 static void
 print_line_buffer(Host *host, char *linebuf, char *color)
 {
@@ -797,6 +799,9 @@ host_stdio_done(Host *h)
 	return h->stdout_fd == -2 && h->stderr_fd == -2;
 }
 
+/*
+ * The main program loop that should be called from main().
+ */
 static void
 main_loop()
 {
@@ -845,7 +850,6 @@ main_loop()
 		}
 	}
 }
-
 
 /*
  * Parse the hosts file and create the Host structs
