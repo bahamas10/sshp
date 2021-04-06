@@ -293,6 +293,9 @@ print_usage(FILE *s)
 	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
 }
 
+/*
+ * Return an "s" if the number of items (given as an int) should be plural.
+ */
 static const char *
 pluralize(int num)
 {
@@ -334,6 +337,9 @@ safe_malloc(size_t size, const char *msg)
 	return ptr;
 }
 
+/*
+ * Create a ChildProcess object.
+ */
 static ChildProcess *
 child_process_create()
 {
@@ -365,6 +371,9 @@ child_process_stdio_done(ChildProcess *cp)
 	    cp->stdio_fd == -2;
 }
 
+/*
+ * Free a ChildProcess object (and the optionally created output buffer).
+ */
 static void
 child_process_destroy(ChildProcess *cp)
 {
@@ -725,6 +734,9 @@ spawn_child_process(Host *host)
 	host->cp->started_time = monotonic_time_ms();
 }
 
+/*
+ * Register a specific fd to epoll.
+ */
 static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
@@ -1119,6 +1131,9 @@ join_mode_finish(int num_hosts)
 	}
 }
 
+/*
+ * Print the progress line as hosts finish in join mode.
+ */
 static void
 print_progress_line(int done, int num_hosts)
 {
