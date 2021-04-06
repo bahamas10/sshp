@@ -81,20 +81,31 @@ enum PipeType {
 };
 
 /*
+ * A struct that represents a single child process.
+ *
+ * - stdout_fd and stderr_fd are used in group and line-by-line mode.
+ * - stdio_fd represents both output streams and is used in join mode, as well
+ *   as the buffer object to store the output.
+ */
+typedef struct child_process {
+	pid_t pid;		// child pid, -1 = hasn't started
+	int stdout_fd;		// stdout fd, -1 = hasn't started, -2 = closed
+	int stderr_fd;		// stderr fd, -1 = hasn't started, -2 = closed
+	int stdio_fd;		// stdio fd,  -1 = hasn't started, -2 = closed
+	char *output;		// output buffer (used by join mode)
+	int output_idx;		// output index (used by join mode)
+	int exit_code;		// exit code, -1 = hasn't exited
+	long started_time;	// monotonic time (in ms) when child forked
+	long finished_time;	// monotonic time (in ms) when child reaped
+} ChildProcess;
+
+/*
  * A struct that represents a single host (as a linked-list).
  */
 typedef struct host {
 	char *name;		// host name
-	pid_t pid;		// child pid, -1 hasn't started, -2 has exited
-	int num_fds;
-	int stdout_fd;
-	int stderr_fd;
-	int stdio_fd;
-	char *output;
-	int exit_code;
-	long started_time;	// monotonic time (in ms) when child forked
-	long finished_time;	// monotonic time (in ms) when child reaped
-	struct host *next;
+	ChildProcess *cp;	// child process
+	struct host *next;	// next Host in the list
 } Host;
 
 /*
@@ -102,7 +113,7 @@ typedef struct host {
  */
 typedef struct fd_event {
 	Host *host;		// related Host struct
-	int fd;			// file descriptor number
+	int fd;			// fd number
 	char *buffer;		// buffer used by line-by-line and join mode
 	int offset;		// buffer offset used as noted above
 	enum PipeType type;	// type of fd this event represents
@@ -314,6 +325,48 @@ safe_malloc(size_t size, const char *msg)
 	return ptr;
 }
 
+static ChildProcess *
+child_process_create()
+{
+	ChildProcess *cp = safe_malloc(sizeof (ChildProcess),
+	    "child_process_create");
+
+	cp->stdout_fd = -1;
+	cp->stderr_fd = -1;
+	cp->stdio_fd = -1;
+	cp->pid = -1;
+	cp->exit_code = -1;
+	cp->started_time = -1;
+	cp->finished_time = -1;
+	cp->output = NULL;
+	cp->output_idx = -1;
+
+	return cp;
+}
+
+/*
+ * Check if the given Host object has had both of its stdio pipes closed.
+ */
+static bool
+child_process_stdio_done(ChildProcess *cp)
+{
+	assert(cp != NULL);
+
+	return (cp->stdout_fd == -2 && cp->stderr_fd == -2) ||
+	    cp->stdio_fd == -2;
+}
+
+static void
+child_process_destroy(ChildProcess *cp)
+{
+	if (cp == NULL) {
+		return;
+	}
+
+	free(cp->output);
+	free(cp);
+}
+
 /*
  * Allocate and create a new Host object given its hostname.  The hostname will
  * be copied from the given argument.
@@ -330,30 +383,11 @@ host_create(const char *name)
 		err(3, "strdup hostname %s", name);
 	}
 
-	// initalize host
 	host->name = name_dup;
-	host->stdout_fd = -1;
-	host->stderr_fd = -1;
-	host->stdio_fd = -1;
-	host->pid = -1;
-	host->exit_code = -1;
+	host->cp = NULL;
 	host->next = NULL;
-	host->started_time = -1;
-	host->finished_time = -1;
-	host->output = NULL;
 
 	return host;
-}
-
-/*
- * Check if the given Host object has had both of its stdio pipes closed.
- */
-static bool
-host_stdio_done(Host *h)
-{
-	assert(h != NULL);
-
-	return (h->stdout_fd == -2 && h->stderr_fd == -2) || h->stdio_fd == -2;
 }
 
 /*
@@ -369,8 +403,9 @@ host_destroy(Host *host)
 	free(host->name);
 	host->name = NULL;
 
-	free(host->output);
-	host->output = NULL;
+	child_process_destroy(host->cp);
+
+	free(host);
 }
 
 /*
@@ -380,6 +415,7 @@ static FdEvent *
 fdev_create(Host *host, enum PipeType type)
 {
 	assert(host != NULL);
+	assert(host->cp != NULL);
 
 	FdEvent *fdev = safe_malloc(sizeof (FdEvent), "FdEvent");
 
@@ -403,25 +439,17 @@ fdev_create(Host *host, enum PipeType type)
 		break;
 	}
 
+	// get fd
+	switch (type) {
+	case PIPE_STDOUT: fdev->fd = host->cp->stdout_fd; break;
+	case PIPE_STDERR: fdev->fd = host->cp->stderr_fd; break;
+	case PIPE_STDIO:  fdev->fd = host->cp->stdio_fd;  break;
+	}
+	assert(fdev->fd >= 0);
+
 	return fdev;
 }
 
-/*
- * Given an FdEvent pointer return the event relevant fd.
- */
-static int
-fdev_get_fd(FdEvent *fdev)
-{
-	assert(fdev != NULL);
-	assert(fdev->host != NULL);
-
-	switch (fdev->type) {
-	case PIPE_STDOUT: return fdev->host->stdout_fd;
-	case PIPE_STDERR: return fdev->host->stderr_fd;
-	case PIPE_STDIO: return fdev->host->stdio_fd;
-	default: errx(3, "fdev_get_fd unknown fdev->type '%d'", fdev->type);
-	}
-}
 /*
  * Given an FdEvent pointer return the event relevant color.
  */
@@ -514,6 +542,24 @@ trim_newline(char *s)
 }
 
 /*
+ * Given a null terminated stream return whether it ends in a newline
+ * character.
+ */
+static bool
+ends_in_newline(const char *s)
+{
+	assert(s != NULL);
+	int idx = strlen(s);
+
+	// empty strings don't end in a newline technically
+	if (idx == 0) {
+		return false;
+	}
+
+	return s[idx - 1] == '\n';
+}
+
+/*
  * Get the current monotonic time in ms.
  */
 static long
@@ -594,6 +640,7 @@ spawn_child_process(Host *host)
 {
 	assert(host != NULL);
 	assert(host->name != NULL);
+	assert(host->cp == NULL);
 
 	char *command[MAX_ARGS] = {NULL};
 	pid_t pid;
@@ -648,24 +695,25 @@ spawn_child_process(Host *host)
 	}
 
 	// in parent
+	host->cp = child_process_create();
 
 	// close write ends and save read ends
 	switch (opts.mode) {
 	case MODE_JOIN:
 		close(stdio_fd[WRITE_END]);
-		host->stdio_fd = stdio_fd[READ_END];
+		host->cp->stdio_fd = stdio_fd[READ_END];
 		break;
 	default:
 		close(stdout_fd[WRITE_END]);
 		close(stderr_fd[WRITE_END]);
-		host->stdout_fd = stdout_fd[READ_END];
-		host->stderr_fd = stderr_fd[READ_END];
+		host->cp->stdout_fd = stdout_fd[READ_END];
+		host->cp->stderr_fd = stderr_fd[READ_END];
 		break;
 	}
 
 	// save data
-	host->pid = pid;
-	host->started_time = monotonic_time_ms();
+	host->cp->pid = pid;
+	host->cp->started_time = monotonic_time_ms();
 }
 
 static void
@@ -674,12 +722,11 @@ register_child_process_fd(Host *host, enum PipeType type)
 	// create an epoll event
 	struct epoll_event ev;
 	FdEvent *fdev = fdev_create(host, type);
-	int fd = fdev_get_fd(fdev);
 
 	ev.events = EPOLLIN;
 	ev.data.ptr = fdev;
 
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fdev->fd, &ev) == -1) {
 		err(3, "epoll_ctl add");
 	}
 }
@@ -713,27 +760,28 @@ register_child_process_fds(Host *host)
 static void
 wait_for_child(Host *host)
 {
-	int status;
-	pid_t pid;
-
 	assert(host != NULL);
 
+	int status;
+	pid_t pid;
+	ChildProcess *cp = host->cp;
+
 	// reap the child
-	pid = waitpid(host->pid, &status, 0);
+	pid = waitpid(cp->pid, &status, 0);
 
 	if (pid < 0) {
 		err(3, "waitpid");
 	}
 
 	// set the host as closed
-	host->exit_code = WEXITSTATUS(status);
-	host->pid = -2;
-	host->finished_time = monotonic_time_ms();
+	cp->exit_code = WEXITSTATUS(status);
+	cp->pid = -2;
+	cp->finished_time = monotonic_time_ms();
 
 	// print the exit message
 	if (opts.exit_codes || opts.debug) {
-		long delta = host->finished_time - host->started_time;
-		char *code_color = host->exit_code == 0 ?
+		long delta = cp->finished_time - cp->started_time;
+		char *code_color = cp->exit_code == 0 ?
 		    colors.good : colors.bad;
 
 		// check if a newline is needed
@@ -745,7 +793,7 @@ wait_for_child(Host *host)
 		// print the exit status
 		printf("[%s%s%s] exited: %s%d%s (%s%ld%s ms)\n",
 		    colors.log_id, host->name, colors.reset,
-		    code_color, host->exit_code, colors.reset,
+		    code_color, cp->exit_code, colors.reset,
 		    colors.important, delta, colors.reset);
 	}
 }
@@ -898,13 +946,13 @@ read_active_fd(FdEvent *fdev)
 
 	switch (fdev->type) {
 	case PIPE_STDOUT:
-		fd = &host->stdout_fd;
+		fd = &host->cp->stdout_fd;
 		break;
 	case PIPE_STDERR:
-		fd = &host->stderr_fd;
+		fd = &host->cp->stderr_fd;
 		break;
 	case PIPE_STDIO:
-		fd = &host->stdio_fd;
+		fd = &host->cp->stdio_fd;
 		break;
 	default:
 		errx(3, "unknown type %d", fdev->type);
@@ -943,8 +991,9 @@ read_active_fd(FdEvent *fdev)
 				// copy fdev buffer to host object for later analysis
 				if (fdev->offset <= opts.max_output_length) {
 					fdev->buffer[fdev->offset] = '\0';
+					fdev->offset++;
 				}
-				host->output = fdev->buffer;
+				host->cp->output = fdev->buffer;
 				fdev->buffer = NULL;
 				break;
 			default:
@@ -1003,8 +1052,9 @@ join_mode_finish()
 
 	// loop the hosts to check their output
 	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
-		char *output = h1->output;
+		char *output = h1->cp->output;
 
+		// this host already processed
 		if (output == NULL) {
 			continue;
 		}
@@ -1012,18 +1062,20 @@ join_mode_finish()
 		printf("hosts: %s%s", colors.log_id, h1->name);
 
 		for (Host *h2 = h1->next; h2 != NULL; h2 = h2->next) {
-			if (strcmp(output, h2->output) == 0) {
+			if (strcmp(output, h2->cp->output) == 0) {
 				printf(" %s", h2->name);
-				free(h2->output);
-				h2->output = NULL;
+				free(h2->cp->output);
+				h2->cp->output = NULL;
 			}
 
 		}
 
-		printf("%s\n%s\n", colors.reset, output);
+		printf("%s\n%s", colors.reset, output);
+		if (!ends_in_newline(output)) {
+			printf("\n");
+		}
+		printf("\n");
 	}
-
-	printf("\n");
 }
 
 static void
@@ -1085,7 +1137,7 @@ main_loop(int num_hosts)
 			bool fd_closed = read_active_fd(fdev);
 
 			// check if the childs stdio is done and reap it
-			if (fd_closed && host_stdio_done(host)) {
+			if (fd_closed && child_process_stdio_done(host->cp)) {
 				wait_for_child(host);
 				outstanding--;
 				done++;
