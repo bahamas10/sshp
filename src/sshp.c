@@ -134,6 +134,9 @@ static int epoll_fd;
 // If a newline was printed (used for group mode only)
 static bool newline_printed = true;
 
+// If stdout is a tty
+static bool stdout_isatty;
+
 // CLI options for getopt_long
 static char *short_options = "ac:def:ghi:jl:m:nNp:qstvy";
 static struct option long_options[] = {
@@ -288,6 +291,12 @@ print_usage(FILE *s)
 	fprintf(s, "the ssh port\n");
 	fprintf(s, "%s  -y, --tty                  %s", colors.good, colors.reset);
 	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
+}
+
+static const char *
+pluralize(int num)
+{
+	return num == 1 ? "" : "s";
 }
 
 /*
@@ -1046,29 +1055,61 @@ read_active_fd(FdEvent *fdev)
  * Finish analysis for join mode.
  */
 static void
-join_mode_finish()
+join_mode_finish(int num_hosts)
 {
+	int idx = 0;
+	int *count = safe_malloc(sizeof (int) * num_hosts, "join_mode_finish");
+
 	printf("\n");
 
 	// loop the hosts to check their output
 	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
-		char *output = h1->cp->output;
+		int num_same = 1;
 
 		// this host already processed
-		if (output == NULL) {
+		if (h1->cp->output_idx >= 0) {
 			continue;
 		}
 
-		printf("hosts: %s%s", colors.log_id, h1->name);
+		h1->cp->output_idx = idx;
 
 		for (Host *h2 = h1->next; h2 != NULL; h2 = h2->next) {
-			if (strcmp(output, h2->cp->output) == 0) {
-				printf(" %s", h2->name);
-				free(h2->cp->output);
-				h2->cp->output = NULL;
+			// skip already processed host
+			if (h2->cp->output_idx >= 0) {
+				continue;
+			}
+
+			// check if output is the same
+			if (strcmp(h1->cp->output, h2->cp->output) == 0) {
+				h2->cp->output_idx = idx;
+				num_same++;
 			}
 
 		}
+
+		count[idx] = num_same;
+		idx++;
+	}
+
+	printf("finished with %s%d%s unique result%s\n\n",
+	    colors.important, idx, colors.reset, pluralize(idx));
+
+	for (int i = 0; i < idx; i++) {
+		printf("hosts (%s%d%s/%s%d%s):%s",
+		    colors.important, count[i], colors.reset,
+		    colors.important, num_hosts, colors.reset,
+		    colors.log_id);
+
+		char *output = NULL;
+		for (Host *h = hosts; h != NULL; h = h->next) {
+			if (h->cp->output_idx != i) {
+				continue;
+			}
+
+			output = h->cp->output;
+			printf(" %s", h->name);
+		}
+		assert(output != NULL);
 
 		printf("%s\n%s", colors.reset, output);
 		if (!ends_in_newline(output)) {
@@ -1079,7 +1120,7 @@ join_mode_finish()
 }
 
 static void
-print_status(int done, int num_hosts)
+print_progress_line(int done, int num_hosts)
 {
 	printf("[%s%s%s] finished %s%d%s/%s%d%s\r",
 	    colors.log_id, PROG_NAME, colors.reset,
@@ -1099,8 +1140,8 @@ main_loop(int num_hosts)
 	int done = 0;
 	struct epoll_event events[EPOLL_MAX_EVENTS];
 
-	if (opts.mode) {
-		print_status(done, num_hosts);
+	if (opts.mode == MODE_JOIN && stdout_isatty) {
+		print_progress_line(done, num_hosts);
 	}
 
 	// loop while there are still child processes
@@ -1141,8 +1182,8 @@ main_loop(int num_hosts)
 				wait_for_child(host);
 				outstanding--;
 				done++;
-				if (opts.mode) {
-					print_status(done, num_hosts);
+				if (opts.mode == MODE_JOIN) {
+					print_progress_line(done, num_hosts);
 					if (done == num_hosts) {
 						printf("\n");
 					}
@@ -1289,7 +1330,7 @@ parse_arguments(int argc, char **argv)
 
 	// check if colorized output should be enabled
 	if (opts.color == NULL || strcmp(opts.color, "auto") == 0) {
-		opts.color = isatty(STDOUT_FILENO) == 1 ? "on" : "off";
+		opts.color = stdout_isatty ? "on" : "off";
 	}
 	if (strcmp(opts.color, "on") == 0) {
 		colors.host = COLOR_YELLOW;
@@ -1339,6 +1380,9 @@ main(int argc, char **argv)
 
 	// record start time
 	start_time = monotonic_time_ms();
+
+	// check stdout tty
+	stdout_isatty = isatty(STDOUT_FILENO) == 1;
 
 	// initalize options
 	opts.max_line_length = DEFAULT_MAX_LINE_LENGTH;
@@ -1456,7 +1500,7 @@ main(int argc, char **argv)
 
 	// handle join mode if applicable
 	if (opts.mode == MODE_JOIN) {
-		join_mode_finish();
+		join_mode_finish(num_hosts);
 	}
 
 	// free memory
