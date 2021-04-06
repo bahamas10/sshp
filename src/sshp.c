@@ -57,7 +57,7 @@
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
 	if (opts.debug) { \
-		printf("[%ssshp%s] ", colors.log_id, colors.reset); \
+		printf("[%s%s%s] ", colors.log_id, PROG_NAME, colors.reset); \
 		printf(__VA_ARGS__); \
 	} \
 }
@@ -212,18 +212,21 @@ print_usage(FILE *s)
 	fprintf(s, "\n");
 	// usage
 	fprintf(s, "%sUSAGE:%s\n", colors.host, colors.reset);
-	fprintf(s, "%s    sshp [-m maxjobs] [-f file] command ...%s\n", colors.good, colors.reset);
+	fprintf(s, "%s    %s [-m maxjobs] [-f file] command ...%s\n",
+	    colors.good, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	// examples
 	fprintf(s, "%sEXAMPLES:%s\n", colors.host, colors.reset);
 	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of `uname -v`\n");
 	fprintf(s, "\n");
-	fprintf(s, "%s      sshp uname -v < hosts%s\n", colors.good, colors.reset);
+	fprintf(s, "%s      %s uname -v < hosts%s\n",
+	    colors.good, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "    ssh into a list of hosts passed on the command line, limit max parallel\n");
 	fprintf(s, "    connections to 3, and grab the output of pgrep\n");
 	fprintf(s, "\n");
-	fprintf(s, "%s      sshp -m 3 -f hosts.txt pgrep -fl process%s\n", colors.good, colors.reset);
+	fprintf(s, "%s      %s -m 3 -f hosts.txt pgrep -fl process%s\n",
+	    colors.good, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	// options
 	fprintf(s, "%sOPTIONS:%s\n", colors.host, colors.reset);
@@ -996,24 +999,57 @@ read_active_fd(FdEvent *fdev)
 static void
 join_mode_finish()
 {
-	printf("TODO finishthis\n");
+	printf("\n");
 
 	// loop the hosts to check their output
-	for (Host *h = hosts; h != NULL; h = h->next) {
-		printf("host %s done\n--------\n%s\n-------\n",
-		    h->name, h->output);
+	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
+		char *output = h1->output;
+
+		if (output == NULL) {
+			continue;
+		}
+
+		printf("hosts: %s%s", colors.log_id, h1->name);
+
+		for (Host *h2 = h1->next; h2 != NULL; h2 = h2->next) {
+			if (strcmp(output, h2->output) == 0) {
+				printf(" %s", h2->name);
+				free(h2->output);
+				h2->output = NULL;
+			}
+
+		}
+
+		printf("%s\n%s\n", colors.reset, output);
 	}
+
+	printf("\n");
+}
+
+static void
+print_status(int done, int num_hosts)
+{
+	printf("[%s%s%s] finished %s%d%s/%s%d%s\r",
+	    colors.log_id, PROG_NAME, colors.reset,
+	    colors.important, done, colors.reset,
+	    colors.important, num_hosts, colors.reset);
+	fflush(stdout);
 }
 
 /*
  * The main program loop that should be called from main().
  */
 static void
-main_loop()
+main_loop(int num_hosts)
 {
 	Host *cur_host = hosts;
 	int outstanding = 0;
+	int done = 0;
 	struct epoll_event events[EPOLL_MAX_EVENTS];
+
+	if (opts.mode) {
+		print_status(done, num_hosts);
+	}
 
 	// loop while there are still child processes
 	while (cur_host != NULL || outstanding > 0) {
@@ -1052,6 +1088,13 @@ main_loop()
 			if (fd_closed && host_stdio_done(host)) {
 				wait_for_child(host);
 				outstanding--;
+				done++;
+				if (opts.mode) {
+					print_status(done, num_hosts);
+					if (done == num_hosts) {
+						printf("\n");
+					}
+				}
 			}
 		}
 	}
@@ -1354,7 +1397,7 @@ main(int argc, char **argv)
 	}
 
 	// start the main loop!
-	main_loop();
+	main_loop(num_hosts);
 
 	// tidy up
 	close(epoll_fd);
