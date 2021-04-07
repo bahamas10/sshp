@@ -453,6 +453,7 @@ fdev_create(Host *host, enum PipeType type)
 	case MODE_GROUP:
 		// stdio is not buffered in group mode
 		break;
+	default: errx(3, "unknown mode: %d", opts.mode);
 	}
 
 	// get fd
@@ -460,6 +461,7 @@ fdev_create(Host *host, enum PipeType type)
 	case PIPE_STDOUT: fdev->fd = host->cp->stdout_fd; break;
 	case PIPE_STDERR: fdev->fd = host->cp->stderr_fd; break;
 	case PIPE_STDIO:  fdev->fd = host->cp->stdio_fd;  break;
+	default: errx(3, "unknown type: %d", type);
 	}
 	assert(fdev->fd >= 0);
 
@@ -478,7 +480,7 @@ fdev_get_color(FdEvent *fdev)
 	case PIPE_STDOUT: return colors.green;
 	case PIPE_STDERR: return colors.red;
 	case PIPE_STDIO: return "";
-	default: errx(3, "fdev_get_color unknown fdev->type '%d'", fdev->type);
+	default: errx(3, "unknown fdev->type: %d", fdev->type);
 	}
 }
 
@@ -970,17 +972,10 @@ read_active_fd(FdEvent *fdev)
 	host = fdev->host;
 
 	switch (fdev->type) {
-	case PIPE_STDOUT:
-		fd = &host->cp->stdout_fd;
-		break;
-	case PIPE_STDERR:
-		fd = &host->cp->stderr_fd;
-		break;
-	case PIPE_STDIO:
-		fd = &host->cp->stdio_fd;
-		break;
-	default:
-		errx(3, "unknown type %d", fdev->type);
+	case PIPE_STDOUT: fd = &host->cp->stdout_fd; break;
+	case PIPE_STDERR: fd = &host->cp->stderr_fd; break;
+	case PIPE_STDIO: fd = &host->cp->stdio_fd; break;
+	default: errx(3, "unknown type %d", fdev->type);
 	}
 
 	// loop while bytes available
