@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -82,6 +83,15 @@ enum PipeType {
 };
 
 /*
+ * ChildProcess state.
+ */
+enum CpState {
+	STATE_READY = 0,
+	STATE_RUNNING,
+	STATE_DONE
+};
+
+/*
  * A struct that represents a single child process.
  *
  * - stdout_fd and stderr_fd are used in group and line mode.
@@ -98,6 +108,7 @@ typedef struct child_process {
 	int exit_code;		// exit code, -1 = hasn't exited
 	long started_time;	// monotonic time (in ms) when child forked
 	long finished_time;	// monotonic time (in ms) when child reaped
+	enum CpState state;	// process state, defaults to STATE_READY
 } ChildProcess;
 
 /*
@@ -314,6 +325,76 @@ prog_mode_to_string(enum ProgMode mode)
 }
 
 /*
+ * Convert the given CpState to a string
+static const char *
+prog_mode_to_string(enum CpState state)
+{
+	switch (state) {
+	case STATE_READY: return "ready";
+	case STATE_RUNNING: return "running";
+	case STATE_DONE: return "join";
+	default: errx(3, "unknown CpState: %d", state);
+	}
+}
+ */
+
+/*
+ * Print status - called via SIGUSR1 handler.
+ */
+static void
+print_status()
+{
+	int num_hosts = 0;
+	int cp_ready = 0;
+	int cp_running = 0;
+	int cp_done = 0;
+
+	// calculate number of hosts in various state
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		assert(h->cp != NULL);
+		switch (h->cp->state) {
+		case STATE_READY: cp_ready++; break;
+		case STATE_RUNNING: cp_running++; break;
+		case STATE_DONE: cp_done++; break;
+		default: errx(3, "unknown cp->state: %d", h->cp->state);
+		}
+		num_hosts++;
+	}
+
+	printf("%s%d%s running, ", colors.magenta, cp_running, colors.reset);
+	printf("%s%d%s finished, ", colors.magenta, cp_done, colors.reset);
+	printf("%s%d%s remaining ", colors.magenta, cp_ready, colors.reset);
+	printf("(%s%d%s total)\n", colors.magenta, num_hosts, colors.reset);
+
+	printf("running processes:\n");
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		assert(h->cp != NULL);
+		if (h->cp->state != STATE_RUNNING) {
+			continue;
+		}
+		printf("--> pid %s%d%s %s%s%s\n",
+		    colors.magenta, h->cp->pid, colors.reset,
+		    colors.cyan, h->name, colors.reset);
+	}
+}
+
+/*
+ * Signal handler
+ */
+static void
+signal_handler(int signum)
+{
+	// ensure we only handle SIGUSR1
+	if (signum != SIGUSR1) {
+		errx(3, "unknown signal handled: %d", signum);
+	}
+
+	printf("\n%sSIGUSR1%s receieved\n", colors.yellow, colors.reset);
+	print_status();
+	printf("\n");
+}
+
+/*
  * Wrapper for malloc that takes an error message as the second argument and
  * exits on failure.
  */
@@ -352,6 +433,7 @@ child_process_create()
 	cp->finished_time = -1;
 	cp->output = NULL;
 	cp->output_idx = -1;
+	cp->state = STATE_READY;
 
 	return cp;
 }
@@ -399,7 +481,7 @@ host_create(const char *name)
 	}
 
 	host->name = name_dup;
-	host->cp = NULL;
+	host->cp = child_process_create();
 	host->next = NULL;
 
 	return host;
@@ -663,7 +745,7 @@ spawn_child_process(Host *host)
 {
 	assert(host != NULL);
 	assert(host->name != NULL);
-	assert(host->cp == NULL);
+	assert(host->cp != NULL);
 
 	char *command[MAX_ARGS] = {NULL};
 	pid_t pid;
@@ -718,7 +800,6 @@ spawn_child_process(Host *host)
 	}
 
 	// in parent
-	host->cp = child_process_create();
 
 	// close write ends and save read ends
 	switch (opts.mode) {
@@ -737,6 +818,7 @@ spawn_child_process(Host *host)
 	// save data
 	host->cp->pid = pid;
 	host->cp->started_time = monotonic_time_ms();
+	host->cp->state = STATE_RUNNING;
 }
 
 /*
@@ -803,6 +885,7 @@ wait_for_child(Host *host)
 	cp->exit_code = WEXITSTATUS(status);
 	cp->pid = -2;
 	cp->finished_time = monotonic_time_ms();
+	cp->state = STATE_DONE;
 
 	// print the exit message
 	if (opts.exit_codes || opts.debug) {
@@ -1199,6 +1282,9 @@ main_loop(int num_hosts)
 		num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
 		    EPOLL_WAIT_TIMEOUT);
 		if (num_events == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
 			err(3, "epoll_wait");
 		}
 
@@ -1511,8 +1597,14 @@ main(int argc, char **argv)
 		err(3, "epoll_create1");
 	}
 
+	// handle signals
+	signal(SIGUSR1, signal_handler);
+
 	// print debug output
 	if (opts.debug) {
+		// print pid
+		DEBUG("pid: %s%d%s\n", colors.green, getpid(), colors.reset);
+
 		// print base command
 		DEBUG("ssh command: [ ");
 		for (char **arg = base_ssh_command; *arg != NULL; arg++) {
