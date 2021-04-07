@@ -379,18 +379,41 @@ print_status()
 }
 
 /*
- * Signal handler
+ * Kill all running processes.
+ */
+static void
+kill_running_processes()
+{
+	for (Host *h = hosts; h != NULL; h = h->next) {
+		assert(h->cp != NULL);
+		if (h->cp->state != STATE_RUNNING) {
+			continue;
+		}
+		assert(h->cp->pid > 0);
+
+		DEBUG("killing pid %s%d%s %s%s%s\n",
+		    colors.magenta, h->cp->pid, colors.reset,
+		    colors.cyan, h->name, colors.reset);
+		kill(h->cp->pid, SIGTERM);
+	}
+}
+
+/*
+ * Signal handler.
  */
 static void
 signal_handler(int signum)
 {
-	// ensure we only handle SIGUSR1
-	if (signum != SIGUSR1) {
-		errx(3, "unknown signal handled: %d", signum);
+	printf("\n%s%s%s receieved\n",
+	    colors.yellow, strsignal(signum), colors.reset);
+
+	switch (signum) {
+	case SIGUSR1: print_status(); break;
+	case SIGINT: kill_running_processes(); exit(5);
+	case SIGTERM: kill_running_processes(); exit(5);
+	default: errx(3, "unknown signal handled: %d", signum);
 	}
 
-	printf("\n%sSIGUSR1%s receieved\n", colors.yellow, colors.reset);
-	print_status();
 	printf("\n");
 }
 
@@ -1598,7 +1621,15 @@ main(int argc, char **argv)
 	}
 
 	// handle signals
-	signal(SIGUSR1, signal_handler);
+	if (signal(SIGUSR1, signal_handler) == SIG_ERR) {
+		err(3, "register SIGUSR1");
+	}
+	if (signal(SIGTERM, signal_handler) == SIG_ERR) {
+		err(3, "register SIGTERM");
+	}
+	if (signal(SIGINT, signal_handler) == SIG_ERR) {
+		err(3, "register SIGINT");
+	}
 
 	// print debug output
 	if (opts.debug) {
