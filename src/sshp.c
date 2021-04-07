@@ -1420,6 +1420,7 @@ parse_arguments(int argc, char **argv)
 int
 main(int argc, char **argv)
 {
+	int dev_null_fd;
 	FILE *hosts_file = stdin;
 	long delta;
 	long end_time;
@@ -1470,6 +1471,12 @@ main(int argc, char **argv)
 	// handle CLI options
 	parse_arguments(argc, argv);
 
+	// open /dev/null to overwrite stdin
+	dev_null_fd = open("/dev/null", O_RDONLY);
+	if (dev_null_fd == -1) {
+		err(3, "open /dev/null");
+	}
+
 	// figure out where to read hosts from (stdin or a file)
 	if (opts.file != NULL && strcmp(opts.file, "-") != 0) {
 		hosts_file = fopen(opts.file, "r");
@@ -1481,12 +1488,22 @@ main(int argc, char **argv)
 
 	// read in hosts and create structure for each one
 	num_hosts = parse_hosts(hosts_file);
-	fclose(hosts_file);
 
 	// ensure at least 1 host is specified
 	if (num_hosts < 1) {
 		errx(2, "no hosts specified");
 	}
+
+	// close the hosts file if it wasn't from stdin
+	if (hosts_file != stdin) {
+		fclose(hosts_file);
+	}
+
+	// copy over stdin with /dev/null
+	if (dup2(dev_null_fd, STDIN_FILENO) == -1) {
+		err(3, "dup2 /dev/null stdin");
+	}
+	close(dev_null_fd);
 
 	// create shared epoll instance
 	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
