@@ -139,7 +139,7 @@ static bool newline_printed = true;
 static bool stdout_isatty;
 
 // CLI options for getopt_long
-static char *short_options = "ac:def:ghi:jl:m:nNo:p:qstv";
+static char *short_options = "ac:def:ghi:jl:m:no:p:qstv";
 static struct option long_options[] = {
 	{"max-line-length", required_argument, NULL, 1000},
 	{"max-output-length", required_argument, NULL, 1001},
@@ -186,7 +186,6 @@ static struct opts {
 	// user options (passed directly to ssh)
 	char *identity;		// -i, --ident <file>
 	char *login;		// -l, --login <name>
-	bool no_strict;		// -N, --no-strict
 	bool quiet;		// -q, --quiet
 
 	// derived options
@@ -1305,7 +1304,6 @@ parse_arguments(int argc, char **argv)
 		case 'l': opts.login = optarg; break;
 		case 'm': opts.max_jobs = atoi(optarg); break;
 		case 'n': opts.dry_run = true; break;
-		case 'N': opts.no_strict = true; break;
 		case 'o': push_arguments("-o", optarg, NULL); break;
 		case 'p': opts.port = optarg; break;
 		case 'q': opts.quiet = true; break;
@@ -1433,7 +1431,6 @@ main(int argc, char **argv)
 	opts.max_jobs = 50;
 	opts.mode = MODE_LINE_BY_LINE;
 	opts.dry_run = false;
-	opts.no_strict = false;
 	opts.port = NULL;
 	opts.quiet = false;
 	opts.silent = false;
