@@ -1236,13 +1236,13 @@ static int
 parse_hosts(FILE *f)
 {
 	Host *tail = NULL;
-	char hostname[HOST_NAME_MAX];
+	char hostname[_POSIX_HOST_NAME_MAX];
 	int lineno = 1;
 	int num_hosts = 0;
 
 	assert(f != NULL);
 
-	while (fgets(hostname, HOST_NAME_MAX, f) != NULL) {
+	while (fgets(hostname, _POSIX_HOST_NAME_MAX, f) != NULL) {
 		Host *host;
 		char prefix = hostname[0];
 
@@ -1261,7 +1261,7 @@ parse_hosts(FILE *f)
 		 */
 		if (!lsplit_str(hostname, '\n')) {
 			errx(2, "hosts file line %d too long (>= %d chars)\n%s",
-			    lineno, HOST_NAME_MAX, hostname);
+			    lineno, _POSIX_HOST_NAME_MAX, hostname);
 		}
 
 		// create Host
