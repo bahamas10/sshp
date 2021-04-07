@@ -13,6 +13,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -138,7 +139,7 @@ static bool newline_printed = true;
 static bool stdout_isatty;
 
 // CLI options for getopt_long
-static char *short_options = "ac:def:ghi:jl:m:nNp:qstvy";
+static char *short_options = "ac:def:ghi:jl:m:nNo:p:qstvy";
 static struct option long_options[] = {
 	{"max-line-length", required_argument, NULL, 1000},
 	{"max-output-length", required_argument, NULL, 1001},
@@ -155,6 +156,7 @@ static struct option long_options[] = {
 	{"max-jobs", required_argument, NULL, 'm'},
 	{"dry-run", no_argument, NULL, 'n'},
 	{"no-strict", no_argument, NULL, 'N'},
+	{"option", required_argument, NULL, 'o'},
 	{"port", required_argument, NULL, 'p'},
 	{"quiet", no_argument, NULL, 'q'},
 	{"silent", no_argument, NULL, 's'},
@@ -167,8 +169,6 @@ static struct option long_options[] = {
 // options set via CLI opts
 static struct opts {
 	// user options (program)
-	int max_line_length;	// --max-line-length <num>
-	int max_output_length;	// --max-output-length <num>
 	bool anonymous;		// -a, --anonymous
 	char *color;		// -c, --color <on|off|auto>
 	bool debug;		// -d, --debug
@@ -181,6 +181,8 @@ static struct opts {
 	char *port;		// -p, --port <port>
 	bool silent;		// -s, --silent
 	bool trim;		// -t, --trim
+	int max_line_length;	// --max-line-length <num>
+	int max_output_length;	// --max-output-length <num>
 
 	// user options (passed directly to ssh)
 	char *identity;		// -i, --ident <file>
@@ -269,7 +271,7 @@ print_usage(FILE *s)
 	fprintf(s, "%s  -s, --silent               %s", colors.good, colors.reset);
 	fprintf(s, "silence all stdout and stderr from remote hosts, defaults to false\n");
 	fprintf(s, "%s  -t, --trim                 %s", colors.good, colors.reset);
-	fprintf(s, "trim hostnames from fqdn to short name (remove domain), defaults to false\n");
+	fprintf(s, "trim hostnames (remove domain) for output only, defaults to false\n");
 	fprintf(s, "%s  -v, --version              %s", colors.good, colors.reset);
 	fprintf(s, "print the version number and exit\n");
 	fprintf(s, "%s  --max-line-length <num>    %s", colors.good, colors.reset);
@@ -524,34 +526,40 @@ make_pipe(int *fd)
 
 /*
  * Push an argument to the ssh base command and bounds check it.
+ * The strings passed to this function need to be allocated or contstantly
+ * defined.
  */
 static void
-push_argument(char *s)
+push_arguments(char *s, ...)
 {
-	static int idx = 0;
-
 	assert(s != NULL);
 
-	if (idx >= MAX_ARGS - 2) {
-		errx(2, "too many command arguments");
+	static int idx = 0;
+	va_list args;
+
+	va_start(args, s);
+	while (s != NULL) {
+		if (idx >= MAX_ARGS - 2) {
+			errx(2, "too many command arguments");
+		}
+		base_ssh_command[idx] = s;
+		idx++;
+		s = va_arg(args, char *);
 	}
-
-	base_ssh_command[idx] = s;
-
-	idx++;
+	va_end(args);
 }
 
 /*
- * Replace the first occurence of '\n' with '\0' in a string.
+ * Replace the first occurence of char c with '\0' in a string.
  * Returns true if a replacement was made and false otherwise.
  */
 static bool
-trim_newline(char *s)
+lsplit_str(char *s, char c)
 {
 	assert(s != NULL);
 
 	for (int i = 0; s[i] != '\0'; i++) {
-		if (s[i] == '\n') {
+		if (s[i] == c) {
 			s[i] = '\0';
 			return true;
 		}
@@ -1168,6 +1176,12 @@ main_loop(int num_hosts)
 		// create child processes
 		while (cur_host != NULL && outstanding < opts.max_jobs) {
 			spawn_child_process(cur_host);
+
+			// chop off the domain portion of the name if -t
+			if (opts.trim) {
+				lsplit_str(cur_host->name, '.');
+			}
+
 			register_child_process_fds(cur_host);
 
 			outstanding++;
@@ -1238,7 +1252,7 @@ parse_hosts(FILE *f)
 		 * remove the ending newline - if a newline is not present the
 		 * line is too long
 		 */
-		if (!trim_newline(hostname)) {
+		if (!lsplit_str(hostname, '\n')) {
 			errx(2, "hosts file line %d too long (>= %d chars)\n%s",
 			    lineno, HOST_NAME_MAX, hostname);
 		}
@@ -1301,6 +1315,7 @@ parse_arguments(int argc, char **argv)
 		case 'm': opts.max_jobs = atoi(optarg); break;
 		case 'n': opts.dry_run = true; break;
 		case 'N': opts.no_strict = true; break;
+		case 'o': push_arguments("-o", optarg, NULL); break;
 		case 'p': opts.port = optarg; break;
 		case 'q': opts.quiet = true; break;
 		case 's': opts.silent = true; break;
@@ -1376,6 +1391,14 @@ parse_arguments(int argc, char **argv)
 		errx(2, "no command specified");
 	}
 
+	// add options to command
+	if (opts.login != NULL) {
+		push_arguments("-l", opts.login, NULL);
+	}
+	if (opts.port != NULL) {
+		push_arguments("-p", opts.port, NULL);
+	}
+
 	// save the remaining arguments as the command
 	remote_command = argv;
 }
@@ -1432,20 +1455,11 @@ main(int argc, char **argv)
 	colors.good = "";
 	colors.bad = "";
 
+	// initalized the base ssh command
+	push_arguments("echo", "ssh", NULL);
+
 	// handle CLI options
 	parse_arguments(argc, argv);
-
-	// initalized the base ssh command
-	push_argument("echo");
-	push_argument("ssh");
-	if (opts.login != NULL) {
-		push_argument("-l");
-		push_argument(opts.login);
-	}
-	if (opts.port != NULL) {
-		push_argument("-p");
-		push_argument(opts.port);
-	}
 
 	// figure out where to read hosts from (stdin or a file)
 	if (opts.file != NULL && strcmp(opts.file, "-") != 0) {
