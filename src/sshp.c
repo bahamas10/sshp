@@ -58,7 +58,7 @@
 // printf-like function that runs if "debug" mode is enabled
 #define DEBUG(...) { \
 	if (opts.debug) { \
-		printf("[%s%s%s] ", colors.log_id, PROG_NAME, colors.reset); \
+		printf("[%s%s%s] ", colors.cyan, PROG_NAME, colors.reset); \
 		printf(__VA_ARGS__); \
 	} \
 }
@@ -139,7 +139,7 @@ static bool newline_printed = true;
 static bool stdout_isatty;
 
 // CLI options for getopt_long
-static char *short_options = "ac:def:ghi:jl:m:nNo:p:qstvy";
+static char *short_options = "ac:def:ghi:jl:m:nNo:p:qstv";
 static struct option long_options[] = {
 	{"max-line-length", required_argument, NULL, 1000},
 	{"max-output-length", required_argument, NULL, 1001},
@@ -162,7 +162,6 @@ static struct option long_options[] = {
 	{"silent", no_argument, NULL, 's'},
 	{"trim", no_argument, NULL, 't'},
 	{"version", no_argument, NULL, 'v'},
-	{"tty", no_argument, NULL, 'y'},
 	{NULL, 0, NULL, 0}
 };
 
@@ -189,7 +188,6 @@ static struct opts {
 	char *login;		// -l, --login <name>
 	bool no_strict;		// -N, --no-strict
 	bool quiet;		// -q, --quiet
-	bool tty;		// -y, --tty
 
 	// derived options
 	enum ProgMode mode;	// set by program based on `-j` or `-g`
@@ -197,15 +195,15 @@ static struct opts {
 
 // colors to use when printing if coloring is enabled
 static struct colors {
-	char *host;
-	char *important;
-	char *log_id;
+	char *black;
+	char *red;
+	char *green;
+	char *yellow;
+	char *blue;
+	char *magenta;
+	char *cyan;
+	char *white;
 	char *reset;
-	char *stderr;
-	char *stdout;
-	char *value;
-	char *good;
-	char *bad;
 } colors;
 
 /*
@@ -215,84 +213,82 @@ static void
 print_usage(FILE *s)
 {
 	// print banner
-	fprintf(s, "%s        _         %s\n", colors.important, colors.reset);
-	fprintf(s, "%s  _____| |_  _ __ %s   ", colors.important, colors.reset);
-	fprintf(s, "%s %s (%s)%s\n", colors.good, PROG_FULL_NAME, PROG_VERSION, colors.reset);
-	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", colors.important, colors.reset);
-	fprintf(s, "%s Source: %s%s\n", colors.good, PROG_SOURCE, colors.reset);
-	fprintf(s, "%s /__/__/_||_| .__/%s   ", colors.important, colors.reset);
-	fprintf(s, "%s %s%s\n", colors.good, PROG_LICENSE, colors.reset);
-	fprintf(s, "%s            |_|   %s   \n", colors.important, colors.reset);
+	fprintf(s, "%s        _         %s\n", colors.magenta, colors.reset);
+	fprintf(s, "%s  _____| |_  _ __ %s   ", colors.magenta, colors.reset);
+	fprintf(s, "%s %s (%s)%s\n", colors.green, PROG_FULL_NAME, PROG_VERSION, colors.reset);
+	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", colors.magenta, colors.reset);
+	fprintf(s, "%s Source: %s%s\n", colors.green, PROG_SOURCE, colors.reset);
+	fprintf(s, "%s /__/__/_||_| .__/%s   ", colors.magenta, colors.reset);
+	fprintf(s, "%s %s%s\n", colors.green, PROG_LICENSE, colors.reset);
+	fprintf(s, "%s            |_|   %s   \n", colors.magenta, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "Parallel ssh with streaming output\n");
 	fprintf(s, "\n");
 	// usage
-	fprintf(s, "%sUSAGE:%s\n", colors.host, colors.reset);
+	fprintf(s, "%sUSAGE:%s\n", colors.yellow, colors.reset);
 	fprintf(s, "%s    %s [-m maxjobs] [-f file] command ...%s\n",
-	    colors.good, PROG_NAME, colors.reset);
+	    colors.green, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	// examples
-	fprintf(s, "%sEXAMPLES:%s\n", colors.host, colors.reset);
+	fprintf(s, "%sEXAMPLES:%s\n", colors.yellow, colors.reset);
 	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of `uname -v`\n");
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s uname -v < hosts%s\n",
-	    colors.good, PROG_NAME, colors.reset);
+	    colors.green, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "    ssh into a list of hosts passed on the command line, limit max parallel\n");
 	fprintf(s, "    connections to 3, and grab the output of pgrep\n");
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s -m 3 -f hosts.txt pgrep -fl process%s\n",
-	    colors.good, PROG_NAME, colors.reset);
+	    colors.green, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	// options
-	fprintf(s, "%sOPTIONS:%s\n", colors.host, colors.reset);
-	fprintf(s, "%s  -a, --anonymous            %s", colors.good, colors.reset);
+	fprintf(s, "%sOPTIONS:%s\n", colors.yellow, colors.reset);
+	fprintf(s, "%s  -a, --anonymous            %s", colors.green, colors.reset);
 	fprintf(s, "hide hostname prefix, defaults to false\n");
-	fprintf(s, "%s  -c, --color <on|off|auto>  %s", colors.good, colors.reset);
+	fprintf(s, "%s  -c, --color <on|off|auto>  %s", colors.green, colors.reset);
 	fprintf(s, "enable or disable color output, defaults to auto\n");
-	fprintf(s, "%s  -d, --debug                %s", colors.good, colors.reset);
+	fprintf(s, "%s  -d, --debug                %s", colors.green, colors.reset);
 	fprintf(s, "turn on debugging information, defaults to false\n");
-	fprintf(s, "%s  -e, --exit-codes           %s", colors.good, colors.reset);
+	fprintf(s, "%s  -e, --exit-codes           %s", colors.green, colors.reset);
 	fprintf(s, "print the exit code of the remote processes, defaults to false\n");
-	fprintf(s, "%s  -f, --file <file>          %s", colors.good, colors.reset);
+	fprintf(s, "%s  -f, --file <file>          %s", colors.green, colors.reset);
 	fprintf(s, "a file of hosts separated by newlines, defaults to stdin\n");
-	fprintf(s, "%s  -g, --group                %s", colors.good, colors.reset);
+	fprintf(s, "%s  -g, --group                %s", colors.green, colors.reset);
 	fprintf(s, "group the output together as it comes in by hostname, not line-by-line\n");
-	fprintf(s, "%s  -h, --help                 %s", colors.good, colors.reset);
+	fprintf(s, "%s  -h, --help                 %s", colors.green, colors.reset);
 	fprintf(s, "print this message and exit\n");
-	fprintf(s, "%s  -j, --join                 %s", colors.good, colors.reset);
+	fprintf(s, "%s  -j, --join                 %s", colors.green, colors.reset);
 	fprintf(s, "join hosts together by unique output (aggregation mode)\n");
-	fprintf(s, "%s  -m, --max-jobs <num>       %s", colors.good, colors.reset);
+	fprintf(s, "%s  -m, --max-jobs <num>       %s", colors.green, colors.reset);
 	fprintf(s, "the maximum number of jobs to run concurrently, defaults to 300\n");
-	fprintf(s, "%s  -n, --dry-run              %s", colors.good, colors.reset);
+	fprintf(s, "%s  -n, --dry-run              %s", colors.green, colors.reset);
 	fprintf(s, "print debug information without actually running any commands\n");
-	fprintf(s, "%s  -N, --no-strict            %s", colors.good, colors.reset);
+	fprintf(s, "%s  -N, --no-strict            %s", colors.green, colors.reset);
 	fprintf(s, "disable strict host key checking for ssh, defaults to false\n");
-	fprintf(s, "%s  -s, --silent               %s", colors.good, colors.reset);
+	fprintf(s, "%s  -s, --silent               %s", colors.green, colors.reset);
 	fprintf(s, "silence all stdout and stderr from remote hosts, defaults to false\n");
-	fprintf(s, "%s  -t, --trim                 %s", colors.good, colors.reset);
+	fprintf(s, "%s  -t, --trim                 %s", colors.green, colors.reset);
 	fprintf(s, "trim hostnames (remove domain) for output only, defaults to false\n");
-	fprintf(s, "%s  -v, --version              %s", colors.good, colors.reset);
+	fprintf(s, "%s  -v, --version              %s", colors.green, colors.reset);
 	fprintf(s, "print the version number and exit\n");
-	fprintf(s, "%s  --max-line-length <num>    %s", colors.good, colors.reset);
+	fprintf(s, "%s  --max-line-length <num>    %s", colors.green, colors.reset);
 	fprintf(s, "maximum line length (in line-by-line mode only), defaults to %d\n",
 	    DEFAULT_MAX_LINE_LENGTH);
-	fprintf(s, "%s  --max-output-length <num>  %s", colors.good, colors.reset);
+	fprintf(s, "%s  --max-output-length <num>  %s", colors.green, colors.reset);
 	fprintf(s, "maximum output length (in join mode only), defaults to %d\n",
 	    DEFAULT_MAX_OUTPUT_LENGTH);
 	fprintf(s, "\n");
 	// ssh options
-	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n", colors.host, colors.reset);
-	fprintf(s, "%s  -i, --identity <ident>     %s", colors.good, colors.reset);
+	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n", colors.yellow, colors.reset);
+	fprintf(s, "%s  -i, --identity <ident>     %s", colors.green, colors.reset);
 	fprintf(s, "ssh identity file to use\n");
-	fprintf(s, "%s  -l, --login <name>         %s", colors.good, colors.reset);
+	fprintf(s, "%s  -l, --login <name>         %s", colors.green, colors.reset);
 	fprintf(s, "the username to login as\n");
-	fprintf(s, "%s  -q, --quiet                %s", colors.good, colors.reset);
+	fprintf(s, "%s  -q, --quiet                %s", colors.green, colors.reset);
 	fprintf(s, "run ssh in quiet mode\n");
-	fprintf(s, "%s  -p, --port <port>          %s", colors.good, colors.reset);
+	fprintf(s, "%s  -p, --port <port>          %s", colors.green, colors.reset);
 	fprintf(s, "the ssh port\n");
-	fprintf(s, "%s  -y, --tty                  %s", colors.good, colors.reset);
-	fprintf(s, "allocate a pseudo-tty for the ssh session\n");
 }
 
 /*
@@ -479,8 +475,8 @@ fdev_get_color(FdEvent *fdev)
 	assert(fdev != NULL);
 
 	switch (fdev->type) {
-	case PIPE_STDOUT: return colors.stdout;
-	case PIPE_STDERR: return colors.stderr;
+	case PIPE_STDOUT: return colors.green;
+	case PIPE_STDERR: return colors.red;
 	case PIPE_STDIO: return "";
 	default: errx(3, "fdev_get_color unknown fdev->type '%d'", fdev->type);
 	}
@@ -608,7 +604,7 @@ print_host_header(Host *host)
 {
 	assert(host != NULL);
 
-	printf("[%s%s%s]", colors.log_id,
+	printf("[%s%s%s]", colors.cyan,
 	    host->name, colors.reset);
 }
 
@@ -811,7 +807,7 @@ wait_for_child(Host *host)
 	if (opts.exit_codes || opts.debug) {
 		long delta = cp->finished_time - cp->started_time;
 		char *code_color = cp->exit_code == 0 ?
-		    colors.good : colors.bad;
+		    colors.green : colors.red;
 
 		// check if a newline is needed
 		if (!newline_printed) {
@@ -821,9 +817,9 @@ wait_for_child(Host *host)
 
 		// print the exit status
 		printf("[%s%s%s] exited: %s%d%s (%s%ld%s ms)\n",
-		    colors.log_id, host->name, colors.reset,
+		    colors.cyan, host->name, colors.reset,
 		    code_color, cp->exit_code, colors.reset,
-		    colors.important, delta, colors.reset);
+		    colors.magenta, delta, colors.reset);
 	}
 }
 
@@ -1112,13 +1108,13 @@ join_mode_finish(int num_hosts)
 	}
 
 	printf("finished with %s%d%s unique result%s\n\n",
-	    colors.important, idx, colors.reset, pluralize(idx));
+	    colors.magenta, idx, colors.reset, pluralize(idx));
 
 	for (int i = 0; i < idx; i++) {
 		printf("hosts (%s%d%s/%s%d%s):%s",
-		    colors.important, count[i], colors.reset,
-		    colors.important, num_hosts, colors.reset,
-		    colors.log_id);
+		    colors.magenta, count[i], colors.reset,
+		    colors.magenta, num_hosts, colors.reset,
+		    colors.cyan);
 
 		char *output = NULL;
 		for (Host *h = hosts; h != NULL; h = h->next) {
@@ -1146,9 +1142,9 @@ static void
 print_progress_line(int done, int num_hosts)
 {
 	printf("[%s%s%s] finished %s%d%s/%s%d%s\r",
-	    colors.log_id, PROG_NAME, colors.reset,
-	    colors.important, done, colors.reset,
-	    colors.important, num_hosts, colors.reset);
+	    colors.cyan, PROG_NAME, colors.reset,
+	    colors.magenta, done, colors.reset,
+	    colors.magenta, num_hosts, colors.reset);
 	fflush(stdout);
 }
 
@@ -1321,7 +1317,6 @@ parse_arguments(int argc, char **argv)
 		case 's': opts.silent = true; break;
 		case 't': opts.trim = true; break;
 		case 'v': printf("%s\n", PROG_VERSION); exit(0);
-		case 'y': opts.tty = true; break;
 		default: unknown_option = true; break;
 		}
 	}
@@ -1363,15 +1358,15 @@ parse_arguments(int argc, char **argv)
 		opts.color = stdout_isatty ? "on" : "off";
 	}
 	if (strcmp(opts.color, "on") == 0) {
-		colors.host = COLOR_YELLOW;
-		colors.important = COLOR_MAGENTA;
-		colors.log_id = COLOR_CYAN;
+		colors.black = COLOR_BLACK;
+		colors.red = COLOR_RED;
+		colors.green = COLOR_GREEN;
+		colors.yellow = COLOR_YELLOW;
+		colors.blue = COLOR_BLUE;
+		colors.magenta = COLOR_MAGENTA;
+		colors.cyan = COLOR_CYAN;
+		colors.white = COLOR_WHITE;
 		colors.reset = COLOR_RESET;
-		colors.stderr = COLOR_RED;
-		colors.stdout = COLOR_GREEN;
-		colors.value = COLOR_GREEN;
-		colors.good = COLOR_GREEN;
-		colors.bad = COLOR_RED;
 	} else if (strcmp(opts.color, "off") == 0) {
 		// pass, this is default
 	} else {
@@ -1392,6 +1387,12 @@ parse_arguments(int argc, char **argv)
 	}
 
 	// add options to command
+	if (opts.quiet) {
+		push_arguments("-q", NULL);
+	}
+	if (opts.identity != NULL) {
+		push_arguments("-i", opts.identity, NULL);
+	}
 	if (opts.login != NULL) {
 		push_arguments("-l", opts.login, NULL);
 	}
@@ -1442,18 +1443,17 @@ main(int argc, char **argv)
 	opts.quiet = false;
 	opts.silent = false;
 	opts.trim = false;
-	opts.tty = false;
 
 	// initialize colors
-	colors.host = "";
-	colors.important = "";
-	colors.log_id = "";
+	colors.black = "";
+	colors.red = "";
+	colors.green = "";
+	colors.yellow = "";
+	colors.blue = "";
+	colors.magenta = "";
+	colors.cyan = "";
+	colors.white = "";
 	colors.reset = "";
-	colors.stderr = "";
-	colors.stdout = "";
-	colors.value = "";
-	colors.good = "";
-	colors.bad = "";
 
 	// initalized the base ssh command
 	push_arguments("echo", "ssh", NULL);
@@ -1491,16 +1491,16 @@ main(int argc, char **argv)
 		DEBUG("ssh command: [ ");
 		for (char **arg = base_ssh_command; *arg != NULL; arg++) {
 			printf("%s'%s'%s ",
-			    colors.value, *arg, colors.reset);
+			    colors.green, *arg, colors.reset);
 		}
 		printf("]\n");
 
 		// print hosts
 		DEBUG("hosts (%s%d%s): [ ",
-		    colors.important, num_hosts, colors.reset);
+		    colors.magenta, num_hosts, colors.reset);
 		for (Host *h = hosts; h != NULL; h = h->next) {
 			printf("%s'%s'%s ",
-			    colors.value, h->name, colors.reset);
+			    colors.green, h->name, colors.reset);
 		}
 		printf("]\n");
 
@@ -1508,17 +1508,17 @@ main(int argc, char **argv)
 		DEBUG("remote command: [ ");
 		for (char **arg = remote_command; *arg != NULL; arg++) {
 			printf("%s'%s'%s ",
-			    colors.value, *arg, colors.reset);
+			    colors.green, *arg, colors.reset);
 		}
 		printf("]\n");
 
 		// print mode
 		DEBUG("mode: %s%s%s\n",
-		    colors.value, prog_mode_to_string(opts.mode), colors.reset);
+		    colors.green, prog_mode_to_string(opts.mode), colors.reset);
 
 		// print max jobs
 		DEBUG("max-jobs: %s%d%s\n",
-		    colors.value, opts.max_jobs, colors.reset);
+		    colors.green, opts.max_jobs, colors.reset);
 	}
 
 	// start the main loop!
@@ -1544,7 +1544,7 @@ main(int argc, char **argv)
 	end_time = monotonic_time_ms();
 	delta = end_time - start_time;
 	DEBUG("finished (%s%ld%s ms)\n",
-	    colors.important, delta, colors.reset);
+	    colors.magenta, delta, colors.reset);
 
 	return 0;
 }
