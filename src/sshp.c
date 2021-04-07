@@ -1633,16 +1633,6 @@ main(int argc, char **argv)
 
 	// print debug output
 	if (opts.debug) {
-		// print pid
-		DEBUG("pid: %s%d%s\n", colors.green, getpid(), colors.reset);
-
-		// print base command
-		DEBUG("ssh command: [ ");
-		for (char **arg = base_ssh_command; *arg != NULL; arg++) {
-			printf("%s'%s'%s ", colors.green, *arg, colors.reset);
-		}
-		printf("]\n");
-
 		// print hosts
 		DEBUG("hosts (%s%d%s): [ ",
 		    colors.magenta, num_hosts, colors.reset);
@@ -1652,12 +1642,22 @@ main(int argc, char **argv)
 		}
 		printf("]\n");
 
+		// print base command
+		DEBUG("ssh command: [ ");
+		for (char **arg = base_ssh_command; *arg != NULL; arg++) {
+			printf("%s'%s'%s ", colors.green, *arg, colors.reset);
+		}
+		printf("]\n");
+
 		// print command
 		DEBUG("remote command: [ ");
 		for (char **arg = remote_command; *arg != NULL; arg++) {
 			printf("%s'%s'%s ", colors.green, *arg, colors.reset);
 		}
 		printf("]\n");
+
+		// print pid
+		DEBUG("pid: %s%d%s\n", colors.green, getpid(), colors.reset);
 
 		// print mode
 		DEBUG("mode: %s%s%s\n",
