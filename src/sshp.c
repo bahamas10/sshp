@@ -26,7 +26,7 @@
 // app detauls
 #define PROG_NAME	"sshp"
 #define PROG_VERSION	"v0.0.0"
-#define PROG_FULL_NAME	"Parallel SSH Manager"
+#define PROG_FULL_NAME	"Parallel SSH Executor"
 #define PROG_SOURCE	"https://github.com/bahamas10/sshp"
 #define PROG_LICENSE	"MIT License"
 
@@ -42,8 +42,8 @@
 #define DEFAULT_MAX_OUTPUT_LENGTH	(8 * 1024) // 8k
 
 // pipe ends
-#define READ_END	0
-#define WRITE_END	1
+#define PIPE_READ_END	0
+#define PIPE_WRITE_END	1
 
 // ANSI color codes
 #define COLOR_BLACK	"\033[0;30m"
@@ -231,7 +231,7 @@ print_usage(FILE *s)
 	fprintf(s, "%s %s%s\n", colors.green, PROG_LICENSE, colors.reset);
 	fprintf(s, "%s            |_|   %s   \n", colors.magenta, colors.reset);
 	fprintf(s, "\n");
-	fprintf(s, "Parallel ssh with streaming output\n");
+	fprintf(s, "Parallel ssh with streaming output.\n");
 	fprintf(s, "\n");
 	// usage
 	fprintf(s, "%sUSAGE:%s\n", colors.yellow, colors.reset);
@@ -240,66 +240,87 @@ print_usage(FILE *s)
 	fprintf(s, "\n");
 	// examples
 	fprintf(s, "%sEXAMPLES:%s\n", colors.yellow, colors.reset);
-	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of `uname -v`\n");
+	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of %suname -v%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s uname -v < hosts%s\n",
 	    colors.green, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "    ssh into a list of hosts passed on the command line, limit max parallel\n");
-	fprintf(s, "    connections to 3, and grab the output of pgrep\n");
+	fprintf(s, "    connections to 3, and grab the output of %spgrep%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s -m 3 -f hosts.txt pgrep -fl process%s\n",
+	    colors.green, PROG_NAME, colors.reset);
+	fprintf(s, "\n");
+	fprintf(s, "    Upgrade packages on all hosts in the list, one-by-one, grouping the output\n");
+	fprintf(s, "    by host, with debugging output enabled.\n");
+	fprintf(s, "\n");
+	fprintf(s, "%s      %s -m 1 -f hosts.txt -d -g pkg-manager update%s\n",
 	    colors.green, PROG_NAME, colors.reset);
 	fprintf(s, "\n");
 	// options
 	fprintf(s, "%sOPTIONS:%s\n", colors.yellow, colors.reset);
 	fprintf(s, "%s  -a, --anonymous            %s", colors.green, colors.reset);
-	fprintf(s, "Hide hostname prefix, defaults to false\n");
+	fprintf(s, "Hide hostname prefix, defaults to %sfalse%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -c, --color <on|off|auto>  %s", colors.green, colors.reset);
-	fprintf(s, "Enable or disable color output, defaults to auto\n");
+	fprintf(s, "Set color output, defaults to %sauto%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -d, --debug                %s", colors.green, colors.reset);
-	fprintf(s, "Turn on debugging information, defaults to false\n");
+	fprintf(s, "Enable debug info, defaults to %sfalse%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -e, --exit-codes           %s", colors.green, colors.reset);
-	fprintf(s, "Print the exit code of the remote processes, defaults to false\n");
+	fprintf(s, "Show command exit codes, defaults to %sfalse%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -f, --file <file>          %s", colors.green, colors.reset);
-	fprintf(s, "A file of hosts separated by newlines, defaults to stdin\n");
+	fprintf(s, "A file of hosts separated by newlines, defaults to %sstdin%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -g, --group                %s", colors.green, colors.reset);
-	fprintf(s, "Group the output together as it comes in by hostname, not line-by-line\n");
+	fprintf(s, "Group output by hostname (%sgroup mode%s).\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -h, --help                 %s", colors.green, colors.reset);
-	fprintf(s, "Print this message and exit\n");
+	fprintf(s, "Print this message and exit.\n");
 	fprintf(s, "%s  -j, --join                 %s", colors.green, colors.reset);
-	fprintf(s, "Join hosts together by unique output (aggregation mode)\n");
+	fprintf(s, "Join hosts together by output (%sjoin mode%s).\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -m, --max-jobs <num>       %s", colors.green, colors.reset);
-	fprintf(s, "The maximum number of jobs to run concurrently, defaults to 300\n");
+	fprintf(s, "Max processes to run concurrently, defaults to %s50%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -n, --dry-run              %s", colors.green, colors.reset);
-	fprintf(s, "Print debug information without actually running any commands\n");
+	fprintf(s, "Don't actually execute subprocesses.\n");
 	fprintf(s, "%s  -s, --silent               %s", colors.green, colors.reset);
-	fprintf(s, "Silence all stdout and stderr from remote hosts, defaults to false\n");
+	fprintf(s, "Silence all output subprocess stdio, defaults to %sfalse%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -t, --trim                 %s", colors.green, colors.reset);
-	fprintf(s, "Trim hostnames (remove domain) for output only, defaults to false\n");
+	fprintf(s, "Trim hostnames (remove domain) on output, defaults to %sfalse%s.\n",
+	    colors.green, colors.reset);
 	fprintf(s, "%s  -v, --version              %s", colors.green, colors.reset);
-	fprintf(s, "Print the version number and exit\n");
+	fprintf(s, "Print the version number and exit.\n");
 	fprintf(s, "%s  --max-line-length <num>    %s", colors.green, colors.reset);
-	fprintf(s, "Maximum line length (in line mode only), defaults to %d\n",
-	    DEFAULT_MAX_LINE_LENGTH);
+	fprintf(s, "Maximum line length (in %sline mode%s), defaults to %s%d%s.\n",
+	    colors.green, colors.reset,
+	    colors.green, DEFAULT_MAX_LINE_LENGTH, colors.reset);
 	fprintf(s, "%s  --max-output-length <num>  %s", colors.green, colors.reset);
-	fprintf(s, "Maximum output length (in join mode only), defaults to %d\n",
-	    DEFAULT_MAX_OUTPUT_LENGTH);
+	fprintf(s, "Maximum output length (in %sjoin mode%s), defaults to %s%d%s.\n",
+	    colors.green, colors.reset,
+	    colors.green, DEFAULT_MAX_OUTPUT_LENGTH, colors.reset);
 	fprintf(s, "\n");
 	// ssh options
-	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n", colors.yellow, colors.reset);
+	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n",
+	    colors.yellow, colors.reset);
 	fprintf(s, "%s  -i, --identity <ident>     %s", colors.green, colors.reset);
-	fprintf(s, "ssh identity file to use\n");
+	fprintf(s, "ssh identity file to use.\n");
 	fprintf(s, "%s  -l, --login <name>         %s", colors.green, colors.reset);
-	fprintf(s, "The username to login as\n");
+	fprintf(s, "The username to login as.\n");
 	fprintf(s, "%s  -q, --quiet                %s", colors.green, colors.reset);
-	fprintf(s, "Run ssh in quiet mode\n");
+	fprintf(s, "Run ssh in quiet mode.\n");
 	fprintf(s, "%s  -p, --port <port>          %s", colors.green, colors.reset);
-	fprintf(s, "The ssh port\n");
+	fprintf(s, "The ssh port.\n");
 	fprintf(s, "\n");
 	// see more
 	fprintf(s, "%sMORE:%s\n", colors.yellow, colors.reset);
-	fprintf(s, "    see %s%s%s(1) for more information\n",
+	fprintf(s, "    see %s%s%s(1) for more information.\n",
 	    colors.green, PROG_NAME, colors.reset);
 }
 
@@ -601,16 +622,16 @@ make_pipe(int *fd)
 	if (pipe(fd) == -1) {
 		err(3, "pipe");
 	}
-	if (fcntl(fd[READ_END], F_SETFL, O_NONBLOCK) == -1) {
+	if (fcntl(fd[PIPE_READ_END], F_SETFL, O_NONBLOCK) == -1) {
 		err(3, "set read end nonblocking");
 	}
-	if (fcntl(fd[WRITE_END], F_SETFL, O_NONBLOCK) == -1) {
+	if (fcntl(fd[PIPE_WRITE_END], F_SETFL, O_NONBLOCK) == -1) {
 		err(3, "set write end nonblocking");
 	}
-	if (fcntl(fd[READ_END], F_SETFD, FD_CLOEXEC) == -1) {
+	if (fcntl(fd[PIPE_READ_END], F_SETFD, FD_CLOEXEC) == -1) {
 		err(3, "set read end cloexec");
 	}
-	if (fcntl(fd[WRITE_END], F_SETFD, FD_CLOEXEC) == -1) {
+	if (fcntl(fd[PIPE_WRITE_END], F_SETFD, FD_CLOEXEC) == -1) {
 		err(3, "set write end cloexec");
 	}
 }
@@ -791,10 +812,10 @@ spawn_child_process(Host *host)
 		int *out_fd = opts.mode == MODE_JOIN ? stdio_fd : stdout_fd;
 		int *err_fd = opts.mode == MODE_JOIN ? stdio_fd : stderr_fd;
 
-		if (dup2(out_fd[WRITE_END], STDOUT_FILENO) == -1) {
+		if (dup2(out_fd[PIPE_WRITE_END], STDOUT_FILENO) == -1) {
 			err(3, "dup2 stdout");
 		}
-		if (dup2(err_fd[WRITE_END], STDERR_FILENO) == -1) {
+		if (dup2(err_fd[PIPE_WRITE_END], STDERR_FILENO) == -1) {
 			err(3, "dup2 stderr");
 		}
 
@@ -807,14 +828,14 @@ spawn_child_process(Host *host)
 	// close write ends and save read ends
 	switch (opts.mode) {
 	case MODE_JOIN:
-		close(stdio_fd[WRITE_END]);
-		host->cp->stdio_fd = stdio_fd[READ_END];
+		close(stdio_fd[PIPE_WRITE_END]);
+		host->cp->stdio_fd = stdio_fd[PIPE_READ_END];
 		break;
 	default:
-		close(stdout_fd[WRITE_END]);
-		close(stderr_fd[WRITE_END]);
-		host->cp->stdout_fd = stdout_fd[READ_END];
-		host->cp->stderr_fd = stderr_fd[READ_END];
+		close(stdout_fd[PIPE_WRITE_END]);
+		close(stderr_fd[PIPE_WRITE_END]);
+		host->cp->stdout_fd = stdout_fd[PIPE_READ_END];
+		host->cp->stderr_fd = stderr_fd[PIPE_READ_END];
 		break;
 	}
 
@@ -1328,6 +1349,7 @@ main_loop(int num_hosts)
 				wait_for_child(host);
 				outstanding--;
 				done++;
+
 				if (opts.mode == MODE_JOIN && stdout_isatty) {
 					print_progress_line(done, num_hosts);
 					if (done == num_hosts) {
