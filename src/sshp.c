@@ -86,9 +86,9 @@ enum PipeType {
  * ChildProcess state.
  */
 enum CpState {
-	STATE_READY = 0,
-	STATE_RUNNING,
-	STATE_DONE
+	CP_STATE_READY = 0,
+	CP_STATE_RUNNING,
+	CP_STATE_DONE
 };
 
 /*
@@ -108,7 +108,7 @@ typedef struct child_process {
 	int exit_code;		// exit code, -1 = hasn't exited
 	long started_time;	// monotonic time (in ms) when child forked
 	long finished_time;	// monotonic time (in ms) when child reaped
-	enum CpState state;	// process state, defaults to STATE_READY
+	enum CpState state;	// process state, defaults to CP_STATE_READY
 } ChildProcess;
 
 /*
@@ -341,14 +341,15 @@ print_status()
 	for (Host *h = hosts; h != NULL; h = h->next) {
 		assert(h->cp != NULL);
 		switch (h->cp->state) {
-		case STATE_READY: cp_ready++; break;
-		case STATE_RUNNING: cp_running++; break;
-		case STATE_DONE: cp_done++; break;
+		case CP_STATE_READY: cp_ready++; break;
+		case CP_STATE_RUNNING: cp_running++; break;
+		case CP_STATE_DONE: cp_done++; break;
 		default: errx(3, "unknown cp->state: %d", h->cp->state);
 		}
 		num_hosts++;
 	}
 
+	printf("status: ");
 	printf("%s%d%s running, ", colors.magenta, cp_running, colors.reset);
 	printf("%s%d%s finished, ", colors.magenta, cp_done, colors.reset);
 	printf("%s%d%s remaining ", colors.magenta, cp_ready, colors.reset);
@@ -357,7 +358,7 @@ print_status()
 	printf("running processes:\n");
 	for (Host *h = hosts; h != NULL; h = h->next) {
 		assert(h->cp != NULL);
-		if (h->cp->state != STATE_RUNNING) {
+		if (h->cp->state != CP_STATE_RUNNING) {
 			continue;
 		}
 		printf("--> pid %s%d%s %s%s%s\n",
@@ -374,7 +375,7 @@ kill_running_processes()
 {
 	for (Host *h = hosts; h != NULL; h = h->next) {
 		assert(h->cp != NULL);
-		if (h->cp->state != STATE_RUNNING) {
+		if (h->cp->state != CP_STATE_RUNNING) {
 			continue;
 		}
 		assert(h->cp->pid > 0);
@@ -444,7 +445,7 @@ child_process_create()
 	cp->finished_time = -1;
 	cp->output = NULL;
 	cp->output_idx = -1;
-	cp->state = STATE_READY;
+	cp->state = CP_STATE_READY;
 
 	return cp;
 }
@@ -820,9 +821,9 @@ spawn_child_process(Host *host)
 	// save data
 	host->cp->pid = pid;
 	host->cp->started_time = monotonic_time_ms();
-	host->cp->state = STATE_RUNNING;
+	host->cp->state = CP_STATE_RUNNING;
 
-	DEBUG("[%s%d%s] %s%s%s spawned\n",
+	DEBUG("%s%d%s %s%s%s spawned\n",
 	    colors.magenta, host->cp->pid, colors.reset,
 	    colors.cyan, host->name, colors.reset);
 }
@@ -875,6 +876,7 @@ static void
 wait_for_child(Host *host)
 {
 	assert(host != NULL);
+	assert(host->cp != NULL);
 
 	int status;
 	pid_t pid;
@@ -891,7 +893,7 @@ wait_for_child(Host *host)
 	cp->exit_code = WEXITSTATUS(status);
 	cp->pid = -2;
 	cp->finished_time = monotonic_time_ms();
-	cp->state = STATE_DONE;
+	cp->state = CP_STATE_DONE;
 
 	// print the exit message
 	if (opts.exit_codes || opts.debug) {
@@ -907,7 +909,7 @@ wait_for_child(Host *host)
 
 		// print the exit status
 		if (opts.debug) {
-			printf("[%s%s%s] [%s%d%s] %s%s%s exited: %s%d%s ",
+			printf("[%s%s%s] %s%d%s %s%s%s exited: %s%d%s ",
 			    colors.cyan, PROG_NAME, colors.reset,
 			    colors.magenta, pid, colors.reset,
 			    colors.cyan, host->name, colors.reset,
@@ -1184,8 +1186,6 @@ finish_join_mode(int num_hosts)
 	int idx = 0;
 	int *count = safe_malloc(sizeof (int) * num_hosts, "finish_join_mode");
 
-	printf("\n");
-
 	// loop the hosts to check and categorize their output
 	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
 		int num_same = 1;
@@ -1218,7 +1218,7 @@ finish_join_mode(int num_hosts)
 	printf("finished with %s%d%s unique result%s\n\n",
 	    colors.magenta, idx, colors.reset, pluralize(idx));
 
-	// loop the results
+	// loop the unique results
 	for (int i = 0; i < idx; i++) {
 		printf("hosts (%s%d%s/%s%d%s):%s",
 		    colors.magenta, count[i], colors.reset,
@@ -1236,10 +1236,19 @@ finish_join_mode(int num_hosts)
 		}
 		assert(output != NULL);
 
+		// print the output
 		printf("%s\n%s", colors.reset, output);
+
+		// alert if the output is empty
+		if (output[0] == '\0') {
+			printf("%s- no output -%s", colors.magenta, colors.reset);
+		}
+
+		// print a newline if there isn't one
 		if (!ends_in_newline(output)) {
 			printf("\n");
 		}
+
 		printf("\n");
 	}
 }
@@ -1319,10 +1328,10 @@ main_loop(int num_hosts)
 				wait_for_child(host);
 				outstanding--;
 				done++;
-				if (opts.mode == MODE_JOIN) {
+				if (opts.mode == MODE_JOIN && stdout_isatty) {
 					print_progress_line(done, num_hosts);
 					if (done == num_hosts) {
-						printf("\n");
+						printf("\n\n");
 					}
 				}
 			}
