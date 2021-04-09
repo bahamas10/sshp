@@ -313,10 +313,12 @@ print_usage(FILE *s)
 	fprintf(s, "ssh identity file to use.\n");
 	fprintf(s, "%s  -l, --login <name>         %s", colors.green, colors.reset);
 	fprintf(s, "The username to login as.\n");
-	fprintf(s, "%s  -q, --quiet                %s", colors.green, colors.reset);
-	fprintf(s, "Run ssh in quiet mode.\n");
+	fprintf(s, "%s  -o, --option <key=val>     %s", colors.green, colors.reset);
+	fprintf(s, "ssh option passed in key=value form.\n");
 	fprintf(s, "%s  -p, --port <port>          %s", colors.green, colors.reset);
 	fprintf(s, "The ssh port.\n");
+	fprintf(s, "%s  -q, --quiet                %s", colors.green, colors.reset);
+	fprintf(s, "Run ssh in quiet mode.\n");
 	fprintf(s, "\n");
 	// see more
 	fprintf(s, "%sMORE:%s\n", colors.yellow, colors.reset);
@@ -1262,7 +1264,8 @@ finish_join_mode(int num_hosts)
 
 		// alert if the output is empty
 		if (output[0] == '\0') {
-			printf("%s- no output -%s", colors.magenta, colors.reset);
+			printf("%s- no output -%s",
+			    colors.magenta, colors.reset);
 		}
 
 		// print a newline if there isn't one
