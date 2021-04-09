@@ -811,8 +811,18 @@ spawn_child_process(Host *host)
 
 	// in child
 	if (pid == 0) {
-		int *out_fd = opts.mode == MODE_JOIN ? stdio_fd : stdout_fd;
-		int *err_fd = opts.mode == MODE_JOIN ? stdio_fd : stderr_fd;
+		int *out_fd;
+		int *err_fd;
+		switch (opts.mode) {
+		case MODE_JOIN:
+			out_fd = stdio_fd;
+			err_fd = stdio_fd;
+			break;
+		default:
+			out_fd = stdout_fd;
+			err_fd = stderr_fd;
+			break;
+		}
 
 		if (dup2(out_fd[PIPE_WRITE_END], STDOUT_FILENO) == -1) {
 			err(3, "dup2 stdout");
