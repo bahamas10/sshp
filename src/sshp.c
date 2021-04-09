@@ -1,6 +1,120 @@
 /*
- * Parallel ssh
+ * sshp: Parallel SSH Executor.
  *
+ * sshp manages multiple ssh processes and handles coalescing their output.
+ * By default, sshp will read a file of newline-separated host names or IPs and
+ * fork ssh subprocesses for them, redirecting the stdout and stderr
+ * streams of the child line-by-line to stdout of `sshp` itself.
+ *
+ * For more information on program usage, see the usage message of this
+ * program, as well as the included README.md file or sshp(1) manpage. This
+ * block comment will focus mainly on the implementation details of sshp and
+ * not the operator usage (unless relevant).
+ *
+ * From a high level sshp works by doing the following:
+ *
+ * 1. Parse arguments (function `parse_arguments`).
+ * 2. Read the hosts file input (function `parse_hosts`).
+ * 3. Start the "Main loop" (function `main_loop`).
+ *   a. Loop the hosts and create subprocesses as required.
+ *   b. Process fd events for any subprocess stdio pipes.
+ * 4. Clean up and exit.
+ *
+ * There are 3 modes of execution:
+ *
+ * - line mode (line-by-line output, default).
+ * - group mode (grouped by hostname output, `-g`).
+ * - join mode (grouped by unique output, `-j`).
+ *
+ * The first 2 modes, line and group, operate in largely the same way,
+ * differing online in how data is buffered from the child processes and
+ * printed to the screen.  Line mode buffers the data line-by-line, whereas
+ * group mode does no buffering at all and prints the data once it is read from
+ * the child.  The last mode however, join, buffers *all* of the data from all
+ * of the child processes and outputs once all processes have finished.
+ * Instead of grouping the output by host, it is grouped by the output itself
+ * to show which hosts had the same output.
+ *
+ * There are 3 types (structs) defined for use by sshp:
+ *
+ * 1. Host.
+ * 2. ChildProcess.
+ * 3. FdEvent.
+ *
+ * All 3 types follow the convention of having a `<name>_create` and
+ * `<name>_destroy`` function to allocate and free the object created.
+ *
+ * The Host type represents a single host that should be ssh'd into.  Each line
+ * in the hosts file that is passed in via stdin or `-f` will have a
+ * corresponding Host object created.  The Host type is created to be a
+ * linked-list, retaining a pointer to "next" which represents the next host
+ * that was read in.  As files are read in by `parse_hosts` a new Host is
+ * created and added to the end of the linked-list.  This way, the order of the
+ * list will match the order of the input file.
+ *
+ * The ChildProcess type represents a single child process that should be
+ * executed.  This is responsible for storing information for and about the
+ * child such as the stdio pipe fds, the exit code (once available), current
+ * state, etc.  A ChildProcess starts in the "ready" state, and goes through
+ * the following stages:
+ *
+ * 1. CP_STATE_READY ("ready").
+ * 2. CP_STATE_RUNNING ("running").
+ * 3. CP_STATE_DONE ("done").
+ *
+ * The FdEvent type represents a single file descriptor and its corresponding
+ * Host object.  This struct will be given to epoll, which in turn will be
+ * given back to us whenever there is an event seen.  This allows for
+ * connecting the fd that had the event to the Host and ChildProcess that
+ * correspond to it.
+ *
+ * The relationship of all of the objects is illustrated below:
+ *
+ * static Host *hosts;
+ *                |
+ *   +------------+
+ *   |
+ *   |   +--------------+       +--------------+
+ *   |   |              |       |              |
+ *   |   | ChildProcess |       | ChildProcess |
+ *   |   |              |       |              |
+ *   |   +--------------+       +--------------+
+ *   |      ^                      ^
+ *   |      |                      |
+ *   |      | (owner)              | (owner)
+ *   |      |                      |
+ *   |   +-----------+          +-----------+
+ *   |   |           |          |           |
+ *   +-> | Host      |--------> | Host      | --------> ... --------> NULL
+ *       |           |          |           |
+ *       +-----------+          +-----------+
+ *          ^                      ^
+ *          |                      |
+ *          |(reference)           |(reference)
+ *          |                      |
+ *       +-----------+          +-----------+
+ *       |           |          |           |
+ *       | FdEvent   |          | FdEvent   |
+ *       |           |          |           |
+ *       +-----------+          +-----------+
+ *
+ * The Host objects will be created first in the execution of sshp, and stored
+ * in a linked-list that is globally accessible as the variable "hosts".  Each
+ * Host object "owns" a ChildProcess object - meaning that when a Host object
+ * is created a corresponding ChildProcess object will be created with it.
+ * Simply put: `host_create` will handle calling `child_process_create` and
+ * also `host_destroy` will call `child_process_destroy` - a ChildProcess
+ * should never need to be created manually.  These objects will be created at
+ * the beginning of execution and destroyed right before they exit.
+ *
+ * The FdEvent objects will be created when file descriptors are added to epoll
+ * and will be destroyed when the fd has closed and has had its final event.
+ * Each FdEvent object will have a pointer to its corresponding Host object,
+ * but this will just be a reference.  This means that destroying an FdEvent
+ * will not result in the connected Host object being destroyed.
+ */
+
+/*
  * Author: Dave Eddy <dave@daveeddy.com>
  * Date: March 26, 2021
  * License: MIT
@@ -391,7 +505,7 @@ print_status()
 }
 
 /*
- * Kill all running processes.
+ * Kill all running child processes.
  */
 static void
 kill_running_processes()
@@ -406,7 +520,9 @@ kill_running_processes()
 		DEBUG("killing pid %s%d%s %s%s%s\n",
 		    colors.magenta, h->cp->pid, colors.reset,
 		    colors.cyan, h->name, colors.reset);
-		kill(h->cp->pid, SIGTERM);
+		if (kill(h->cp->pid, SIGTERM) == -1) {
+			warn("send SIGTERM to pid %d", h->cp->pid);
+		}
 	}
 }
 
