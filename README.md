@@ -49,6 +49,16 @@ the same output.
 Examples
 ---------
 
+Given the following hosts file called `hosts.txt`:
+
+```
+# example hosts file
+
+arbiter.rapture.com
+cifs.rapture.com
+decomp.rapture.com
+```
+
 Parallel ssh into hosts supplied by a file running `uname -v`:
 
 ![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png)
