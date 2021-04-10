@@ -50,7 +50,7 @@
  * - join mode (grouped by unique output, `-j`).
  *
  * The first 2 modes, line and group, operate in largely the same way,
- * differing online in how data is buffered from the child processes and
+ * differing only in how data is buffered from the child processes and
  * printed to the screen.  Line mode buffers the data line-by-line, whereas
  * group mode does no buffering at all and prints the data once it is read from
  * the child.  The last mode however, join, buffers *all* of the data from all
