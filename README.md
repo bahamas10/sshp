@@ -37,25 +37,26 @@ Introduction
 - `join mode` (grouped by unique output, `-j`).
 
 The first 2 modes, `line` and `group`, operate in largely the same way,
-differing only in how data is buffered from the child processes and
-printed to the screen.  Line mode buffers the data line-by-line, whereas
-group mode does no buffering at all and prints the data once it is read from
-the child.  The last mode however, `join`, buffers *all* of the data from all
-of the child processes and outputs once all processes have finished.
-Instead of grouping the output by host, it is grouped by the output itself
-to show which hosts had the same output.
+differing only in how data is buffered from the child processes and printed to
+the screen.  Line mode buffers the data line-by-line, whereas group mode does
+no buffering at all and prints the data once it is read from the child.
+
+The last mode however, `join`, buffers *all* of the data from all of the child
+processes and outputs once all processes have finished.  Instead of grouping
+the output by host, it is grouped by the output itself to show which hosts had
+the same output.
 
 Examples
 ---------
 
 `sshp` is best show through example.
 
-![https://www.daveeddy.com/static/media/github/sshp/c/debug-id.png](debug-id)
-![https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.png](exit-codes)
-![https://www.daveeddy.com/static/media/github/sshp/c/join-mode.png](join-mode)
-![https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png](line-by-line)
-![https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.png](serialize-group)
-![https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.png](sigusr1-status)
+![debug-id](https://www.daveeddy.com/static/media/github/sshp/c/debug-id.png)
+![exit-codes](https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.png)
+![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.png)
+![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png)
+![serialize-group](https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.png)
+![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.png)
 
 Comparison to Node.js `sshp`
 ----------------------------
