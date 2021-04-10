@@ -319,14 +319,14 @@ static struct opts {
 // colors to use when printing if coloring is enabled
 static struct colors {
 	char *black;
-	char *red;
-	char *green;
-	char *yellow;
 	char *blue;
-	char *magenta;
 	char *cyan;
-	char *white;
+	char *green;
+	char *magenta;
+	char *red;
 	char *reset;
+	char *white;
+	char *yellow;
 } colors;
 
 /*
@@ -492,6 +492,7 @@ print_status()
 	printf("%s%d%s remaining ", colors.magenta, cp_ready, colors.reset);
 	printf("(%s%d%s total)\n", colors.magenta, num_hosts, colors.reset);
 
+	// print each child process with their pid
 	printf("running processes:\n");
 	for (Host *h = hosts; h != NULL; h = h->next) {
 		assert(h->cp != NULL);
@@ -520,6 +521,7 @@ kill_running_processes()
 		DEBUG("killing pid %s%d%s %s%s%s\n",
 		    colors.magenta, h->cp->pid, colors.reset,
 		    colors.cyan, h->name, colors.reset);
+
 		if (kill(h->cp->pid, SIGTERM) == -1) {
 			warn("send SIGTERM to pid %d", h->cp->pid);
 		}
@@ -537,8 +539,8 @@ signal_handler(int signum)
 
 	switch (signum) {
 	case SIGUSR1: print_status(); break;
-	case SIGINT: kill_running_processes(); exit(5);
-	case SIGTERM: kill_running_processes(); exit(5);
+	case SIGINT: kill_running_processes(); exit(4);
+	case SIGTERM: kill_running_processes(); exit(4);
 	default: errx(3, "unknown signal handled: %d", signum);
 	}
 
@@ -575,16 +577,16 @@ child_process_create()
 	ChildProcess *cp = safe_malloc(sizeof (ChildProcess),
 	    "child_process_create");
 
-	cp->stdout_fd = -1;
-	cp->stderr_fd = -1;
-	cp->stdio_fd = -1;
-	cp->pid = -1;
 	cp->exit_code = -1;
-	cp->started_time = -1;
 	cp->finished_time = -1;
 	cp->output = NULL;
 	cp->output_idx = -1;
+	cp->pid = -1;
+	cp->started_time = -1;
 	cp->state = CP_STATE_READY;
+	cp->stderr_fd = -1;
+	cp->stdio_fd = -1;
+	cp->stdout_fd = -1;
 
 	return cp;
 }
@@ -805,6 +807,7 @@ static bool
 ends_in_newline(const char *s)
 {
 	assert(s != NULL);
+
 	int idx = strlen(s);
 
 	// empty strings don't end in a newline technically
@@ -853,8 +856,8 @@ build_ssh_command(Host *host, char **command, int size)
 	assert(command != NULL);
 	assert(size > 0);
 
-	int idx = 0;
 	char *name_array[] = {host->name, NULL};
+	int idx = 0;
 
 	/*
 	 * construct SSH command like:
@@ -899,10 +902,10 @@ spawn_child_process(Host *host)
 	assert(host->cp != NULL);
 
 	char *command[MAX_ARGS] = {NULL};
-	pid_t pid;
-	int stdout_fd[2];
 	int stderr_fd[2];
 	int stdio_fd[2];
+	int stdout_fd[2];
+	pid_t pid;
 
 	// build the ssh command
 	build_ssh_command(host, command, MAX_ARGS);
@@ -927,8 +930,8 @@ spawn_child_process(Host *host)
 
 	// in child
 	if (pid == 0) {
-		int *out_fd;
 		int *err_fd;
+		int *out_fd;
 		switch (opts.mode) {
 		case MODE_JOIN:
 			out_fd = stdio_fd;
@@ -984,8 +987,8 @@ static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
 	// create an epoll event
-	struct epoll_event ev;
 	FdEvent *fdev = fdev_create(host, type);
+	struct epoll_event ev;
 
 	ev.events = EPOLLIN;
 	ev.data.ptr = fdev;
@@ -1027,9 +1030,9 @@ wait_for_child(Host *host)
 	assert(host != NULL);
 	assert(host->cp != NULL);
 
+	ChildProcess *cp = host->cp;
 	int status;
 	pid_t pid;
-	ChildProcess *cp = host->cp;
 
 	// reap the child
 	pid = waitpid(cp->pid, &status, 0);
@@ -1046,9 +1049,9 @@ wait_for_child(Host *host)
 
 	// print the exit message
 	if (opts.exit_codes || opts.debug) {
-		long delta = cp->finished_time - cp->started_time;
 		char *code_color = cp->exit_code == 0 ?
 		    colors.green : colors.red;
+		long delta = cp->finished_time - cp->started_time;
 
 		// check if a newline is needed
 		if (!newline_printed) {
@@ -1264,10 +1267,10 @@ fd_done_join(FdEvent *fdev)
 static bool
 read_active_fd(FdEvent *fdev)
 {
+	Host *host;
 	char buf[BUFSIZ];
 	int *fd;
 	int bytes;
-	Host *host;
 
 	assert(fdev != NULL);
 	assert(fdev->host != NULL);
@@ -1332,8 +1335,8 @@ read_active_fd(FdEvent *fdev)
 static void
 finish_join_mode(int num_hosts)
 {
-	int idx = 0;
 	int *count = safe_malloc(sizeof (int) * num_hosts, "finish_join_mode");
+	int idx = 0;
 
 	// loop the hosts to check and categorize their output
 	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
@@ -1369,12 +1372,13 @@ finish_join_mode(int num_hosts)
 
 	// loop the unique results
 	for (int i = 0; i < idx; i++) {
+		char *output = NULL;
+
 		printf("hosts (%s%d%s/%s%d%s):%s",
 		    colors.magenta, count[i], colors.reset,
 		    colors.magenta, num_hosts, colors.reset,
 		    colors.cyan);
 
-		char *output = NULL;
 		for (Host *h = hosts; h != NULL; h = h->next) {
 			if (h->cp->output_idx != i) {
 				continue;
@@ -1423,8 +1427,8 @@ static void
 main_loop(int num_hosts)
 {
 	Host *cur_host = hosts;
-	int outstanding = 0;
 	int done = 0;
+	int outstanding = 0;
 	struct epoll_event events[EPOLL_MAX_EVENTS];
 
 	if (opts.mode == MODE_JOIN && stdout_isatty) {
@@ -1559,9 +1563,9 @@ next:
 static void
 parse_arguments(int argc, char **argv)
 {
-	int opt;
 	bool help_option = false;
 	bool unknown_option = false;
+	int opt;
 
 	// get options
 	while ((opt = getopt_long(argc, argv, short_options, long_options,
@@ -1680,13 +1684,14 @@ parse_arguments(int argc, char **argv)
 int
 main(int argc, char **argv)
 {
-	int dev_null_fd;
 	FILE *hosts_file = stdin;
+	Host *host;
+	int dev_null_fd;
+	int exit_code = 0;
+	int num_hosts;
 	long delta;
 	long end_time;
 	long start_time;
-	int num_hosts;
-	Host *host;
 
 	// record start time
 	start_time = monotonic_time_ms();
@@ -1838,9 +1843,16 @@ main(int argc, char **argv)
 	// tidy up
 	close(epoll_fd);
 
-	// free memory
+	// check exit codes and free memory
 	host = hosts;
 	while (host != NULL) {
+		assert(host->cp != NULL);
+		assert(host->cp->exit_code >= 0);
+
+		if (host->cp->exit_code != 0) {
+			exit_code = 1;
+		}
+
 		Host *temp = host->next;
 		host_destroy(host);
 		host = temp;
@@ -1851,5 +1863,5 @@ main(int argc, char **argv)
 	delta = end_time - start_time;
 	DEBUG("finished (%s%ld%s ms)\n", colors.magenta, delta, colors.reset);
 
-	return 0;
+	return exit_code;
 }
