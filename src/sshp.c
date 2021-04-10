@@ -1,26 +1,49 @@
 /*
  * sshp: Parallel SSH Executor.
  *
+ * ----------------------------------------------------------------------------
+ *
+ * Synopsis
+ *
  * sshp manages multiple ssh processes and handles coalescing their output.
- * By default, sshp will read a file of newline-separated host names or IPs and
+ * By default, sshp will read a file of newline-separated hostnames or IPs and
  * fork ssh subprocesses for them, redirecting the stdout and stderr
  * streams of the child line-by-line to stdout of `sshp` itself.
  *
  * For more information on program usage, see the usage message of this
- * program, as well as the included README.md file or sshp(1) manpage. This
+ * program as well as the included README.md file or sshp(1) manpage. This
  * block comment will focus mainly on the implementation details of sshp and
  * not the operator usage (unless relevant).
  *
  * From a high level sshp works by doing the following:
  *
- * 1. Parse arguments (function `parse_arguments`).
- * 2. Read the hosts file input (function `parse_hosts`).
- * 3. Start the "Main loop" (function `main_loop`).
+ * 1. Parse arguments (in function `parse_arguments`).
+ * 2. Read hosts file input (in function `parse_hosts`).
+ * 3. Start the "Main loop" (in function `main_loop`).
  *   a. Loop the hosts and create subprocesses as required.
+ *     1. Create pipes for child stdio.
+ *     2. Add the pipes to epoll to watch for events.
  *   b. Process fd events for any subprocess stdio pipes.
+ *     1. Read the data until done or EWOULDBLOCK.
+ *     2. Check if all stdio streams are done.
+ *       a. Reap the process if all stdio streams are done.
  * 4. Clean up and exit.
  *
- * There are 3 modes of execution:
+ * Note that all of sshp works in a single thread and relies on epoll and
+ * non-blocking fd reads to handle data as it comes in.
+ *
+ * Each child process will have one or two pipe(s) created to capture their
+ * output.  These fd's will be added to epoll to watch for any events (child
+ * output) and epoll_wait will be invoked to react to new data.  When all the
+ * stdio pipes for a single child process have finished (1) the fd will be
+ * closed, (2) the fd will be unregistered from epoll, and (3) waitpid will be
+ * called on the child to reap it and capture its exit status.
+ *
+ * ----------------------------------------------------------------------------
+ *
+ * Program Modes
+ *
+ * sshp has 3 modes of execution:
  *
  * - line mode (line-by-line output, default).
  * - group mode (grouped by hostname output, `-g`).
@@ -35,6 +58,10 @@
  * Instead of grouping the output by host, it is grouped by the output itself
  * to show which hosts had the same output.
  *
+ * ----------------------------------------------------------------------------
+ *
+ * Structures
+ *
  * There are 3 types (structs) defined for use by sshp:
  *
  * 1. Host.
@@ -44,6 +71,8 @@
  * All 3 types follow the convention of having a `<name>_create` and
  * `<name>_destroy`` function to allocate and free the object created.
  *
+ * - Host
+ *
  * The Host type represents a single host that should be ssh'd into.  Each line
  * in the hosts file that is passed in via stdin or `-f` will have a
  * corresponding Host object created.  The Host type is created to be a
@@ -51,6 +80,8 @@
  * that was read in.  As files are read in by `parse_hosts` a new Host is
  * created and added to the end of the linked-list.  This way, the order of the
  * list will match the order of the input file.
+ *
+ * - ChildProcess
  *
  * The ChildProcess type represents a single child process that should be
  * executed.  This is responsible for storing information for and about the
@@ -61,6 +92,8 @@
  * 1. CP_STATE_READY ("ready").
  * 2. CP_STATE_RUNNING ("running").
  * 3. CP_STATE_DONE ("done").
+ *
+ * - FdEvent
  *
  * The FdEvent type represents a single file descriptor and its corresponding
  * Host object.  This struct will be given to epoll, which in turn will be
@@ -112,6 +145,41 @@
  * Each FdEvent object will have a pointer to its corresponding Host object,
  * but this will just be a reference.  This means that destroying an FdEvent
  * will not result in the connected Host object being destroyed.
+ *
+ * ----------------------------------------------------------------------------
+ *
+ * Signals
+ *
+ * sshp captures the 3 following signals:
+ *
+ * - SIGTERM
+ * - SIGINT
+ * - SIGUSR1
+ *
+ * SIGUSR1 prints a status message (similar to dd(1)) to stdout.  This includes
+ * how many children have ran, are running, and are waiting to run, as well as
+ * the PIDs and hostnames for any currently running children.
+ *
+ * SIGTERM and SIGINT both result in the same actions being taken: all running
+ * child processes are killed via SIGTERM and the program exits with code 4.
+ * There may be a better way to take care of this situation - if so, this code
+ * should be updated.
+ *
+ * ----------------------------------------------------------------------------
+ *
+ *  Exit Codes
+ *
+ *  sshp will exit with the following codes:
+ *
+ *  0: Everything worked and all child processes exited successfully.
+ *  1: Everything worked but 1 or more children exited with a non-zero code.
+ *  2: Incorrect usage - the user supplied something incorrect preventing sshp
+ *     from being able to run (unknown options, invalid host file, etc.).
+ *  3: Program failure - caused by some failing in the system preventing sshp
+ *     from being able to run (malloc failure, epoll failure, etc.).
+ *  4: sshp killed by SIGTERM or SIGINT.
+ *  *: Anything else - probably a blown assertion.
+ *
  */
 
 /*
@@ -810,7 +878,6 @@ ends_in_newline(const char *s)
 
 	int idx = strlen(s);
 
-	// empty strings don't end in a newline technically
 	if (idx == 0) {
 		return false;
 	}
@@ -841,8 +908,7 @@ print_host_header(Host *host)
 {
 	assert(host != NULL);
 
-	printf("[%s%s%s]", colors.cyan,
-	    host->name, colors.reset);
+	printf("[%s%s%s]", colors.cyan, host->name, colors.reset);
 }
 
 /*
@@ -986,7 +1052,6 @@ spawn_child_process(Host *host)
 static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
-	// create an epoll event
 	FdEvent *fdev = fdev_create(host, type);
 	struct epoll_event ev;
 
