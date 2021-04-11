@@ -61,37 +61,37 @@ decomp.rapture.com
 
 Parallel ssh into hosts supplied by a file running `uname -v`:
 
-![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png)
+![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.jpg)
 
 Pass in `-e` to get the exit codes of the commands on the remote end.  The
 local exit code will be 0 if all ssh processes exit successfully, or 1 if any
 of the ssh processes exit with a failure:
 
-![exit-codes](https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.png)
+![exit-codes](https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.jpg)
 
 Also note that the hosts file can be passed in via stdin if `-f` is not
 supplied.
 
 Run with `-d` to get debug information making it clear what `sshp` is doing:
 
-![debug-id](https://www.daveeddy.com/static/media/github/sshp/c/debug-id.png)
+![debug-id](https://www.daveeddy.com/static/media/github/sshp/c/debug-id.jpg)
 
 Run with `-g` (`group mode`) to group the output by hostname as it comes in.
 To illustrate this, `-m` is set to 1 to limit the maximum number of concurrent
 child processes to 1, effectively turning `sshp` into an `ssh` serializer:
 
-![serialize-group](https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.png)
+![serialize-group](https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.jpg)
 
 Run with `-j` (`join mode`) to join the output by the output itself and not the
 hostname:
 
-![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.png)
+![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.jpg)
 
 Send the `sshp` process a `SIGSUR1` signal to print out process status
 information while it is running.  In this example a signal was sent twice to
 the process:
 
-![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.png)
+![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.jpg)
 
 Comparison to Node.js `sshp`
 ----------------------------
