@@ -165,7 +165,7 @@ SSH OPTIONS: (passed directly to ssh)
   -q, --quiet                Run ssh in quiet mode.
 
 MORE:
-    see sshp(1) for more information.
+    See sshp(1) for more information.
 ```
 
 License
