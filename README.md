@@ -106,7 +106,7 @@ compatible with the original Node.js version with some slight alterations:
 - `-u` has been removed.
 - `-y` has been removed.
 
-For more information on why `sshp` was ported from JavaScript to C see [This
+For more information on why `sshp` was ported from JavaScript to C see [this
 blog post](blog).
 
 Usage

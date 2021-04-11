@@ -504,7 +504,7 @@ print_usage(FILE *s)
 	fprintf(s, "\n");
 	// see more
 	fprintf(s, "%sMORE:%s\n", colors.yellow, colors.reset);
-	fprintf(s, "    see %s%s%s(1) for more information.\n",
+	fprintf(s, "    See %s%s%s(1) for more information.\n",
 	    colors.green, PROG_NAME, colors.reset);
 }
 
