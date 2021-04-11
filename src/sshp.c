@@ -561,15 +561,17 @@ print_status()
 	printf("(%s%d%s total)\n", colors.magenta, num_hosts, colors.reset);
 
 	// print each child process with their pid
-	printf("running processes:\n");
-	for (Host *h = hosts; h != NULL; h = h->next) {
-		assert(h->cp != NULL);
-		if (h->cp->state != CP_STATE_RUNNING) {
-			continue;
+	if (cp_running > 0) {
+		printf("running processes:\n");
+		for (Host *h = hosts; h != NULL; h = h->next) {
+			assert(h->cp != NULL);
+			if (h->cp->state != CP_STATE_RUNNING) {
+				continue;
+			}
+			printf("--> pid %s%d%s %s%s%s\n",
+			    colors.magenta, h->cp->pid, colors.reset,
+			    colors.cyan, h->name, colors.reset);
 		}
-		printf("--> pid %s%d%s %s%s%s\n",
-		    colors.magenta, h->cp->pid, colors.reset,
-		    colors.cyan, h->name, colors.reset);
 	}
 }
 
