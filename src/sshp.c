@@ -604,7 +604,7 @@ kill_running_processes()
 static void
 signal_handler(int signum)
 {
-	printf("\n%s%s%s receieved\n",
+	printf("\n%s%s%s received\n",
 	    colors.yellow, strsignal(signum), colors.reset);
 
 	switch (signum) {
