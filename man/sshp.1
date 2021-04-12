@@ -1,0 +1,151 @@
+.TH SSHP 1 "2021" "General Commands Manual"
+.SH NAME
+.PP
+\fB\fCsshp\fR \- Parallel SSH Executor
+.SH SYNOPSIS
+.PP
+\fB\fCsshp [OPTIONS] <command> [args] ...\fR
+.PP
+\fB\fCsshp [\-f <hosts.txt>] [\-j|\-g] <command>\fR
+.SH DESCRIPTION
+.PP
+Parallel SSH executor and manager.
+.PP
+\fB\fCsshp\fR manages multiple ssh processes and handles coalescing the output to the
+terminal.  By default, \fB\fCsshp\fR will read a file of newline\-separated hostnames
+or IPs and fork ssh subprocesses for them, redirecting the stdout and stderr
+streams of the child line\-by\-line to stdout of \fB\fCsshp\fR itself.
+.SH MODES
+.PP
+\fB\fCsshp\fR has 3 modes of execution:
+.RS
+.IP \(bu 2
+\fB\fCline mode\fR (line\-by\-line output, default).
+.IP \(bu 2
+\fB\fCgroup mode\fR (grouped by hostname output, \fB\fC\-g\fR).
+.IP \(bu 2
+\fB\fCjoin mode\fR (grouped by unique output, \fB\fC\-j\fR).
+.RE
+.PP
+The first 2 modes, \fB\fCline\fR and \fB\fCgroup\fR, operate in largely the same way,
+differing only in how data is buffered from the child processes and printed to
+the screen.  Line mode buffers the data line\-by\-line, whereas group mode does
+no buffering at all and prints the data once it is read from the child.
+.PP
+The last mode however, \fB\fCjoin\fR, buffers \fIall\fP of the data from all of the child
+processes and outputs once all processes have finished.  Instead of grouping
+the output by host, it is grouped by the output itself to show which hosts had
+the same output.
+.SH OPTIONS
+.TP
+\fB\fC\-a\fR, \fB\fC\-\-anonymous\fR
+Hide hostname prefix, defaults to \fB\fCfalse\fR\&.
+.TP
+\fB\fC\-c\fR, \fB\fC\-\-color\fR \fIon|off|auto\fP
+Set color output, defaults to \fB\fCauto\fR\&.
+.TP
+\fB\fC\-d\fR, \fB\fC\-\-debug\fR
+Enable debug info, defaults to \fB\fCfalse\fR\&.
+.TP
+\fB\fC\-e\fR, \fB\fC\-\-exit\-codes\fR
+Show command exit codes, defaults to \fB\fCfalse\fR\&.
+.TP
+\fB\fC\-f\fR, \fB\fC\-\-file\fR \fIfile\fP
+A file of hosts separated by newlines, defaults to \fB\fCstdin\fR\&.
+.TP
+\fB\fC\-g\fR, \fB\fC\-\-group\fR
+Group output by hostname (\fB\fCgroup mode\fR).
+.TP
+\fB\fC\-h\fR, \fB\fC\-\-help\fR
+Print this message and exit.
+.TP
+\fB\fC\-j\fR, \fB\fC\-\-join\fR
+Join hosts together by output (\fB\fCjoin mode\fR).
+.TP
+\fB\fC\-m\fR, \fB\fC\-\-max\-jobs\fR \fInum\fP
+Max processes to run concurrently, defaults to \fB\fC50\fR\&.
+.TP
+\fB\fC\-n\fR, \fB\fC\-\-dry\-run\fR
+Don't actually execute subprocesses.
+.TP
+\fB\fC\-s\fR, \fB\fC\-\-silent\fR
+Silence all output subprocess stdio, defaults to \fB\fCfalse\fR\&.
+.TP
+\fB\fC\-t\fR, \fB\fC\-\-trim\fR
+Trim hostnames (remove domain) on output, defaults to \fB\fCfalse\fR\&.
+.TP
+\fB\fC\-v\fR, \fB\fC\-\-version\fR
+Print the version number and exit.
+.TP
+\fB\fC\-\-max\-line\-length\fR \fInum\fP
+Maximum line length (in \fB\fCline mode\fR only), defaults to \fB\fC1024\fR\&.
+.TP
+\fB\fC\-\-max\-output\-length\fR \fInum\fP
+Maximum output length (in \fB\fCjoin mode\fR only), defaults to \fB\fC8192\fR\&.
+.SH SSH OPTIONS: (passed directly to ssh)
+.TP
+\fB\fC\-i\fR, \fB\fC\-\-identity\fR \fIident\fP
+ssh identity file to use.
+.TP
+\fB\fC\-l\fR, \fB\fC\-\-login\fR \fIname\fP
+The username to login as.
+.TP
+\fB\fC\-o\fR, \fB\fC\-\-option\fR \fIkey=val\fP
+ssh option passed in key=value form.
+.TP
+\fB\fC\-p\fR, \fB\fC\-\-port\fR \fIport\fP
+The ssh port.
+.TP
+\fB\fC\-q\fR, \fB\fC\-\-quiet\fR
+Run ssh in quiet mode.
+.SH EXAMPLES
+.PP
+Given the following hosts file called \fB\fChosts.txt\fR:
+.PP
+.RS
+.nf
+# example hosts file
+arbiter.rapture.com
+cifs.rapture.com
+decomp.rapture.com
+.fi
+.RE
+.PP
+\fB\fCsshp \-f hosts.txt uname \-v\fR
+.IP
+Parallel ssh into hosts supplied by a file running \fB\fCuname \-v\fR\&.
+.PP
+\fB\fCcat hosts.txt | sshp \-e exit 0\fR
+.IP
+Parallel ssh into hosts (via \fB\fCstdin\fR) and print the exit codes (\fB\fC\-e\fR).
+.PP
+\fB\fCsshp \-d id \-un < hosts.txt\fR
+.IP
+Parallel ssh into hosts and run \fB\fCid \-un\fR with debug (\fB\fC\-d\fR) output enabled.
+.PP
+\fB\fCsshp \-f hosts.txt \-m 1 \-g command\-to\-run\fR
+.IP
+Run with \fB\fC\-g\fR (\fB\fCgroup mode\fR) to group the output by hostname as it comes in.
+Setting \fB\fC\-m\fR to \fB\fC1\fR effectively turns \fB\fCsshp\fR into an \fB\fCssh\fR serializer.
+.PP
+\fB\fCsshp \-f hosts.txt \-j hostname\fR
+.IP
+Run with \fB\fC\-j\fR (\fB\fCjoin mode\fR) to join the output by the output itself and not
+the hostname.
+.SH SIGNALS
+.PP
+\fB\fCSIGUSR1\fR
+.IP
+Send a \fB\fCSIGUSR1\fR signal to \fB\fCsshp\fR to print a status message to stdout.
+.SH BUGS
+.PP
+\[la]https://github.com/bahamas10/sshp\[ra]
+.SH AUTHOR
+.PP
+\fB\fCDave Eddy <bahamas10> <dave@daveeddy.com> (https://www.daveeddy.com)\fR
+.SH SEE ALSO
+.PP
+.BR ssh (1)
+.SH LICENSE
+.PP
+MIT License
