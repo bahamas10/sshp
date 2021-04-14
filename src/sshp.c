@@ -1914,10 +1914,12 @@ main(int argc, char **argv)
 	host = hosts;
 	while (host != NULL) {
 		assert(host->cp != NULL);
-		assert(host->cp->exit_code >= 0);
 
-		if (host->cp->exit_code != 0) {
-			exit_code = 1;
+		if (!opts.dry_run) {
+			assert(host->cp->exit_code >= 0);
+			if (host->cp->exit_code != 0) {
+				exit_code = 1;
+			}
 		}
 
 		Host *temp = host->next;
