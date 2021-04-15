@@ -721,11 +721,9 @@ host_destroy(Host *host)
 		return;
 	}
 
-	free(host->name);
-	host->name = NULL;
-
 	child_process_destroy(host->cp);
 
+	free(host->name);
 	free(host);
 }
 
@@ -795,10 +793,11 @@ fdev_get_color(FdEvent *fdev)
 static void
 fdev_destroy(FdEvent *fdev)
 {
-	if (fdev != NULL) {
-		free(fdev->buffer);
-		fdev->buffer = NULL;
+	if (fdev == NULL) {
+		return;
 	}
+
+	free(fdev->buffer);
 	free(fdev);
 }
 
