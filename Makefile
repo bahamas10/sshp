@@ -5,6 +5,10 @@ PREFIX ?= /usr/local
 sshp: src/sshp.c
 	$(CC) -o $@ $(CFLAGS) $^
 
+.PHONY: test
+test: sshp
+	./test
+
 .PHONY: man
 man: man/sshp.1
 man/sshp.1: man/sshp.md

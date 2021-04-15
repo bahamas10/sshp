@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# very simple test for sshp just to verify some basic behavior
+#
+# Author: Dave Eddy <dave@daveeddy.com>
+# Date: April 14, 2021
+# License: MIT
+
+hostfile='./assets/test-host-file.txt'
+
+fatal() {
+	echo "$@" >&2
+	exit 1
+}
+
+verify() {
+	local code
+	local want=$1
+	local output
+
+	shift
+
+	echo -n "> ensure [$*] returns $want ... " >&2
+	output=$("$@" 2>&1)
+	code=$?
+
+	if ((code == want)); then
+		echo 'ok' >&2
+	else
+		echo 'failed!' >&2
+		echo '- program output -'
+		echo "$output"
+		exit 1
+	fi
+}
+
+[[ -f $hostfile ]] || fatal "$hostfile doesn't exist"
+
+# -v should just exit 0
+verify 0 ./sshp -v
+
+# -h should just exit 0
+verify 0 ./sshp -h
+
+# no arguments is a user error
+verify 2 ./sshp
+
+# no hosts specified is currently an error
+verify 2 ./sshp -f /dev/null foo
+
+# invalid max parallelism
+verify 2 ./sshp -m
+verify 2 ./sshp -m 0
+verify 2 ./sshp -m foo
+verify 2 ./sshp -m -17
+
+# invalid mode combinations
+verify 2 ./sshp -g -j
+
+# do a dry run
+verify 0 ./sshp -n -f "$hostfile" cmd
+verify 0 ./sshp -n -f - cmd < "$hostfile"
+verify 0 ./sshp -n cmd < "$hostfile"
+
+exit 0
