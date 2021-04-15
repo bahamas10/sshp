@@ -1472,6 +1472,8 @@ finish_join_mode(int num_hosts)
 
 		printf("\n");
 	}
+
+	free(count);
 }
 
 /*

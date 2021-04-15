@@ -1,5 +1,5 @@
 CC := cc
-CFLAGS := -Wall -Werror -Wextra -Wpedantic -O2
+CFLAGS := -Wall -Werror -Wextra -Wpedantic -O0 -g
 PREFIX ?= /usr/local
 
 sshp: src/sshp.c
