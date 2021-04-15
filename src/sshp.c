@@ -1398,6 +1398,22 @@ read_active_fd(FdEvent *fdev)
 
 /*
  * Finish analysis for join mode.
+ *
+ * In join mode, all of the stdout and stderr has been buffered and is
+ * processed in this function.
+ *
+ * This function could possibly be made simpler with hash tables, but for now
+ * it seems to work just fine.  The way it works is:
+ *
+ * 1. Loop all hosts.
+ *   a. Assign each "output" an index (stored as cp->output_idx), the first
+ *      host encountered is index 0.
+ *   b. For each host looped, do *another* loop of the hosts starting at our
+ *      current host and strcmp the output.  If the output is the same, assign
+ *      it the same index.  If the output is different, skip it for now.
+ *   c. Move onto the next host without an index and assign it idx + 1.
+ * 2. Print the nuber of unique results seen (how many indices were created).
+ * 3. Loop the indices and print the unique output + the hostnames.
  */
 static void
 finish_join_mode(int num_hosts)
