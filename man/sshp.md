@@ -4,7 +4,7 @@ SSHP 1 "2021" "General Commands Manual"
 NAME
 ----
 
-`sshp` - Parallel SSH Executor
+`sshp` - Parallel SSH Executor.
 
 SYNOPSIS
 --------
