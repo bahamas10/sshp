@@ -27,8 +27,8 @@ Then optionally run `make install` to install `sshp`:
 `sshp` requires a kernel that supports `epoll` to run.  This has been tested on
 both Linux and illumos Operating Systems.
 
-Introduction
-------------
+About
+-----
 
 `sshp` has 3 modes of execution:
 
@@ -47,7 +47,7 @@ the output by host, it is grouped by the output itself to show which hosts had
 the same output.
 
 Examples
----------
+--------
 
 Given the following hosts file called `hosts.txt`:
 
@@ -92,22 +92,6 @@ information while it is running.  In this example a signal was sent twice to
 the process:
 
 ![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.jpg)
-
-Comparison to Node.js `sshp`
-----------------------------
-
-This program was originally written in Node.js and released as
-[node-sshp](https://github.com/bahamas10/node-sshp).  This C variant is mostly
-compatible with the original Node.js version with some slight alterations:
-
-- `-b` has been changed to `-c off` (disable color output).
-- `-N` has been removed in favor of `-o StrictHostKeyChecking=no`.
-- `-o` has been added to allow for any ssh option to be passed in.
-- `-u` has been removed.
-- `-y` has been removed.
-
-For more information on why `sshp` was ported from JavaScript to C see [this
-blog post](blog).
 
 Exit Codes
 ----------
@@ -179,6 +163,43 @@ SSH OPTIONS: (passed directly to ssh)
 MORE:
     See sshp(1) for more information.
 ```
+
+Tests
+-----
+
+`sshp` comes with a very simple test suite.  It checks for just basic usage and
+sanity, it can be run with `make test`:
+
+    $ make test
+    ./test
+    > ensure [./sshp -v] returns 0 ... ok
+    > ensure [./sshp -h] returns 0 ... ok
+    > ensure [./sshp] returns 2 ... ok
+    > ensure [./sshp -f /dev/null foo] returns 2 ... ok
+    > ensure [./sshp -m] returns 2 ... ok
+    > ensure [./sshp -m 0] returns 2 ... ok
+    > ensure [./sshp -m foo] returns 2 ... ok
+    > ensure [./sshp -m -17] returns 2 ... ok
+    > ensure [./sshp -g -j] returns 2 ... ok
+    > ensure [./sshp -n -f ./assets/test-host-file.txt cmd] returns 0 ... ok
+    > ensure [./sshp -n -f - cmd] returns 0 ... ok
+    > ensure [./sshp -n cmd] returns 0 ... ok
+
+Comparison to Node.js `sshp`
+----------------------------
+
+This program was originally written in Node.js and released as
+[node-sshp](https://github.com/bahamas10/node-sshp).  This C variant is mostly
+compatible with the original Node.js version with some slight alterations:
+
+- `-b` has been changed to `-c off` (disable color output).
+- `-N` has been removed in favor of `-o StrictHostKeyChecking=no`.
+- `-o` has been added to allow for any ssh option to be passed in.
+- `-u` has been removed.
+- `-y` has been removed.
+
+For more information on why `sshp` was ported from JavaScript to C see [this
+blog post](blog).
 
 License
 -------
