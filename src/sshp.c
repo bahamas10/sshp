@@ -403,109 +403,110 @@ static struct colors {
 static void
 print_usage(FILE *s)
 {
+	const char *grn = colors.green;
+	const char *ylw = colors.yellow;
+	const char *mag = colors.magenta;
+	const char *rst = colors.reset;
+
 	// print banner
-	fprintf(s, "%s        _         %s\n", colors.magenta, colors.reset);
-	fprintf(s, "%s  _____| |_  _ __ %s   ", colors.magenta, colors.reset);
-	fprintf(s, "%s %s (%s)%s\n", colors.green, PROG_FULL_NAME, PROG_VERSION, colors.reset);
-	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", colors.magenta, colors.reset);
-	fprintf(s, "%s Source: %s%s\n", colors.green, PROG_SOURCE, colors.reset);
-	fprintf(s, "%s /__/__/_||_| .__/%s   ", colors.magenta, colors.reset);
-	fprintf(s, "%s %s%s\n", colors.green, PROG_LICENSE, colors.reset);
-	fprintf(s, "%s            |_|   %s   \n", colors.magenta, colors.reset);
+	fprintf(s, "%s        _         %s\n", mag, rst);
+	fprintf(s, "%s  _____| |_  _ __ %s   ", mag, rst);
+	fprintf(s, "%s %s (%s)%s\n", grn, PROG_FULL_NAME, PROG_VERSION, rst);
+	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", mag, rst);
+	fprintf(s, "%s Source: %s%s\n", grn, PROG_SOURCE, rst);
+	fprintf(s, "%s /__/__/_||_| .__/%s   ", mag, rst);
+	fprintf(s, "%s %s%s\n", grn, PROG_LICENSE, rst);
+	fprintf(s, "%s            |_|   %s   \n", mag, rst);
 	fprintf(s, "\n");
 	fprintf(s, "Parallel ssh with streaming output.\n");
 	fprintf(s, "\n");
 	// usage
-	fprintf(s, "%sUSAGE:%s\n", colors.yellow, colors.reset);
+	fprintf(s, "%sUSAGE:%s\n", ylw, rst);
 	fprintf(s, "%s    %s [-m maxjobs] [-f file] command ...%s\n",
-	    colors.green, PROG_NAME, colors.reset);
+	    grn, PROG_NAME, rst);
 	fprintf(s, "\n");
 	// examples
-	fprintf(s, "%sEXAMPLES:%s\n", colors.yellow, colors.reset);
-	fprintf(s, "    ssh into a list of hosts passed via stdin and get the output of %suname -v%s.\n",
-	    colors.green, colors.reset);
+	fprintf(s, "%sEXAMPLES:%s\n", ylw, rst);
+	fprintf(s, "    ssh into a list of hosts passed via stdin and get ");
+	fprintf(s, "the output of %suname -v%s.\n", grn, rst);
 	fprintf(s, "\n");
-	fprintf(s, "%s      %s uname -v < hosts%s\n",
-	    colors.green, PROG_NAME, colors.reset);
+	fprintf(s, "%s      %s uname -v < hosts%s\n", grn, PROG_NAME, rst);
 	fprintf(s, "\n");
-	fprintf(s, "    ssh into a list of hosts passed on the command line, limit max parallel\n");
+	fprintf(s, "    ssh into a list of hosts passed on the command line, ");
+	fprintf(s, "limit max parallel\n");
 	fprintf(s, "    connections to 3, and grab the output of %spgrep%s.\n",
-	    colors.green, colors.reset);
+	    grn, rst);
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s -m 3 -f hosts.txt pgrep -fl process%s\n",
-	    colors.green, PROG_NAME, colors.reset);
+	    grn, PROG_NAME, rst);
 	fprintf(s, "\n");
-	fprintf(s, "    Upgrade packages on all hosts in the list, one-by-one, grouping the output\n");
+	fprintf(s, "    Upgrade packages on all hosts in the list, ");
+	fprintf(s, "one-by-one, grouping the output\n");
 	fprintf(s, "    by host, with debugging output enabled.\n");
 	fprintf(s, "\n");
 	fprintf(s, "%s      %s -m 1 -f hosts.txt -d -g pkg-manager update%s\n",
-	    colors.green, PROG_NAME, colors.reset);
+	    grn, PROG_NAME, rst);
 	fprintf(s, "\n");
 	// options
-	fprintf(s, "%sOPTIONS:%s\n", colors.yellow, colors.reset);
-	fprintf(s, "%s  -a, --anonymous            %s", colors.green, colors.reset);
-	fprintf(s, "Hide hostname prefix, defaults to %sfalse%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -c, --color <on|off|auto>  %s", colors.green, colors.reset);
-	fprintf(s, "Set color output, defaults to %sauto%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -d, --debug                %s", colors.green, colors.reset);
-	fprintf(s, "Enable debug info, defaults to %sfalse%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -e, --exit-codes           %s", colors.green, colors.reset);
+	fprintf(s, "%sOPTIONS:%s\n", ylw, rst);
+	fprintf(s, "%s  -a, --anonymous            %s", grn, rst);
+	fprintf(s, "Hide hostname prefix, defaults to %sfalse%s.\n", grn, rst);
+	fprintf(s, "%s  -c, --color <on|off|auto>  %s", grn, rst);
+	fprintf(s, "Set color output, defaults to %sauto%s.\n", grn, rst);
+	fprintf(s, "%s  -d, --debug                %s", grn, rst);
+	fprintf(s, "Enable debug info, defaults to %sfalse%s.\n", grn, rst);
+	fprintf(s, "%s  -e, --exit-codes           %s", grn, rst);
 	fprintf(s, "Show command exit codes, defaults to %sfalse%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -f, --file <file>          %s", colors.green, colors.reset);
-	fprintf(s, "A file of hosts separated by newlines, defaults to %sstdin%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -g, --group                %s", colors.green, colors.reset);
-	fprintf(s, "Group output by hostname (%sgroup mode%s).\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -h, --help                 %s", colors.green, colors.reset);
+	    grn, rst);
+	fprintf(s, "%s  -f, --file <file>          %s", grn, rst);
+	fprintf(s, "A file of hosts separated by newlines, ");
+	fprintf(s, "defaults to %sstdin%s.\n", grn, rst);
+	fprintf(s, "%s  -g, --group                %s", grn, rst);
+	fprintf(s, "Group output by hostname (%sgroup mode%s).\n", grn, rst);
+	fprintf(s, "%s  -h, --help                 %s", grn, rst);
 	fprintf(s, "Print this message and exit.\n");
-	fprintf(s, "%s  -j, --join                 %s", colors.green, colors.reset);
+	fprintf(s, "%s  -j, --join                 %s", grn, rst);
 	fprintf(s, "Join hosts together by output (%sjoin mode%s).\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -m, --max-jobs <num>       %s", colors.green, colors.reset);
+	    grn, rst);
+	fprintf(s, "%s  -m, --max-jobs <num>       %s", grn, rst);
 	fprintf(s, "Max processes to run concurrently, defaults to %s50%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -n, --dry-run              %s", colors.green, colors.reset);
+	    grn, rst);
+	fprintf(s, "%s  -n, --dry-run              %s", grn, rst);
 	fprintf(s, "Don't actually execute subprocesses.\n");
-	fprintf(s, "%s  -s, --silent               %s", colors.green, colors.reset);
-	fprintf(s, "Silence all output subprocess stdio, defaults to %sfalse%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -t, --trim                 %s", colors.green, colors.reset);
-	fprintf(s, "Trim hostnames (remove domain) on output, defaults to %sfalse%s.\n",
-	    colors.green, colors.reset);
-	fprintf(s, "%s  -v, --version              %s", colors.green, colors.reset);
+	fprintf(s, "%s  -s, --silent               %s", grn, rst);
+	fprintf(s, "Silence all output subprocess stdio, ");
+	fprintf(s, "defaults to %sfalse%s.\n", grn, rst);
+	fprintf(s, "%s  -t, --trim                 %s", grn, rst);
+	fprintf(s, "Trim hostnames (remove domain) on output, ");
+	fprintf(s, "defaults to %sfalse%s.\n", grn, rst);
+	fprintf(s, "%s  -v, --version              %s", grn, rst);
 	fprintf(s, "Print the version number and exit.\n");
-	fprintf(s, "%s  --max-line-length <num>    %s", colors.green, colors.reset);
-	fprintf(s, "Maximum line length (in %sline mode%s), defaults to %s%d%s.\n",
-	    colors.green, colors.reset,
-	    colors.green, DEFAULT_MAX_LINE_LENGTH, colors.reset);
-	fprintf(s, "%s  --max-output-length <num>  %s", colors.green, colors.reset);
-	fprintf(s, "Maximum output length (in %sjoin mode%s), defaults to %s%d%s.\n",
-	    colors.green, colors.reset,
-	    colors.green, DEFAULT_MAX_OUTPUT_LENGTH, colors.reset);
+	fprintf(s, "%s  --max-line-length <num>    %s", grn, rst);
+	fprintf(s, "Maximum line length (in %sline mode%s), ", grn, rst);
+	fprintf(s, "defaults to %s%d%s.\n", grn, DEFAULT_MAX_LINE_LENGTH, rst);
+	fprintf(s, "%s  --max-output-length <num>  %s", grn, rst);
+	fprintf(s, "Maximum output length (in %sjoin mode%s), ", grn, rst);
+	fprintf(s, "defaults to %s%d%s.\n",
+	    grn, DEFAULT_MAX_OUTPUT_LENGTH, rst);
 	fprintf(s, "\n");
 	// ssh options
 	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n",
-	    colors.yellow, colors.reset);
-	fprintf(s, "%s  -i, --identity <ident>     %s", colors.green, colors.reset);
+	    ylw, rst);
+	fprintf(s, "%s  -i, --identity <ident>     %s", grn, rst);
 	fprintf(s, "ssh identity file to use.\n");
-	fprintf(s, "%s  -l, --login <name>         %s", colors.green, colors.reset);
+	fprintf(s, "%s  -l, --login <name>         %s", grn, rst);
 	fprintf(s, "The username to login as.\n");
-	fprintf(s, "%s  -o, --option <key=val>     %s", colors.green, colors.reset);
+	fprintf(s, "%s  -o, --option <key=val>     %s", grn, rst);
 	fprintf(s, "ssh option passed in key=value form.\n");
-	fprintf(s, "%s  -p, --port <port>          %s", colors.green, colors.reset);
+	fprintf(s, "%s  -p, --port <port>          %s", grn, rst);
 	fprintf(s, "The ssh port.\n");
-	fprintf(s, "%s  -q, --quiet                %s", colors.green, colors.reset);
+	fprintf(s, "%s  -q, --quiet                %s", grn, rst);
 	fprintf(s, "Run ssh in quiet mode.\n");
 	fprintf(s, "\n");
 	// see more
-	fprintf(s, "%sMORE:%s\n", colors.yellow, colors.reset);
+	fprintf(s, "%sMORE:%s\n", ylw, rst);
 	fprintf(s, "    See %s%s%s(1) for more information.\n",
-	    colors.green, PROG_NAME, colors.reset);
+	    grn, PROG_NAME, rst);
 }
 
 /*
