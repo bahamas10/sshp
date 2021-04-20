@@ -2,6 +2,7 @@
 typedef struct fdwatcher {
 #if USE_KQUEUE
 	// kqueue
+	int kq;
 #else
 	// epoll
 	int epoll_fd;
