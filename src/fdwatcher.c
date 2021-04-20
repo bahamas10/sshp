@@ -1,5 +1,12 @@
 #include <assert.h>
+#include <stdlib.h>
 #include <unistd.h>
+
+#if USE_KQUEUE
+#include <sys/event.h>
+#else
+#include <sys/epoll.h>
+#endif
 
 #include "fdwatcher.h"
 

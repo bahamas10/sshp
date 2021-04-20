@@ -1,10 +1,3 @@
-#include <stdlib.h>
-
-#if USE_KQUEUE
-#include <sys/event.h>
-#else
-#include <sys/epoll.h>
-#endif
 
 typedef struct fdwatcher {
 #if USE_KQUEUE
