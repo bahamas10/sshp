@@ -416,8 +416,10 @@ print_usage(FILE *s)
 	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", mag, rst);
 	fprintf(s, "%s Source: %s%s\n", grn, PROG_SOURCE, rst);
 	fprintf(s, "%s /__/__/_||_| .__/%s   ", mag, rst);
+	fprintf(s, "%s Compiled: %s %s (using %s)%s\n", grn, __DATE__,
+	    __TIME__, fdwatcher_ev_interface(), rst);
+	fprintf(s, "%s            |_|   %s   ", mag, rst);
 	fprintf(s, "%s %s%s\n", grn, PROG_LICENSE, rst);
-	fprintf(s, "%s            |_|   %s   \n", mag, rst);
 	fprintf(s, "\n");
 	fprintf(s, "Parallel ssh with streaming output.\n");
 	fprintf(s, "\n");
@@ -1050,7 +1052,7 @@ spawn_child_process(Host *host)
 }
 
 /*
- * Register a specific fd to epoll.
+ * Register a specific fd to the fdwatcher..
  */
 static void
 register_child_process_fd(Host *host, enum PipeType type)
@@ -1062,7 +1064,7 @@ register_child_process_fd(Host *host, enum PipeType type)
 
 /*
  * Given a Host object that has had its child process spawned add both of its
- * pipes fds to the epoll watcher for events.
+ * pipes fds to the fdwatcher for events.
  */
 static void
 register_child_process_fds(Host *host)
@@ -1535,7 +1537,7 @@ main_loop(int num_hosts)
 		}
 
 		// wait for fd events
-		num_events = fdwatcher_wait(fdw, fdevs, EPOLL_MAX_EVENTS);
+		num_events = fdwatcher_wait(fdw, fdevs, EPOLL_MAX_EVENTS, EPOLL_WAIT_TIMEOUT);
 		if (num_events == -1) {
 			if (errno == EINTR) {
 				continue;
@@ -1846,7 +1848,7 @@ main(int argc, char **argv)
 	}
 	close(dev_null_fd);
 
-	// create shared epoll instance
+	// create shared fdwatcher instance
 	fdw = fdwatcher_create();
 	if (fdw == NULL) {
 		err(3, "fdwatcher_create");

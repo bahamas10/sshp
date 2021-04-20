@@ -10,6 +10,16 @@
 
 #include "fdwatcher.h"
 
+const char *
+fdwatcher_ev_interface()
+{
+#if USE_KQUEUE
+	return "kqueue";
+#else
+	return "epoll";
+#endif
+}
+
 FdWatcher *
 fdwatcher_create()
 {
@@ -20,6 +30,10 @@ fdwatcher_create()
 	}
 
 #if USE_KQUEUE
+	fdw->kq = kqueue();
+	if (fdw->kq == -1) {
+		goto fail;
+	}
 #else
 	fdw->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (fdw->epoll_fd == -1) {
@@ -37,46 +51,76 @@ fail:
 int
 fdwatcher_add(FdWatcher *fdw, int fd, void *ptr)
 {
+	int ret = -1;
+
 #if USE_KQUEUE
+	struct kevent ev;
+
+	EV_SET(&ev, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+	ev.udata = ptr;
+
+	ret = kevent(fdw->kq, &ev, 1, NULL, 0, NULL);
 #else
 	struct epoll_event ev;
 
         ev.events = EPOLLIN;
         ev.data.ptr = ptr;
 
-        if (epoll_ctl(fdw->epoll_fd, EPOLL_CTL_ADD, fd, &ev) == -1) {
-		return -1;
-        }
+        ret = epoll_ctl(fdw->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 #endif
-	return 0;
+
+	return ret;
 }
 
 int
 fdwatcher_remove(FdWatcher *fdw, int fd)
 {
+	int ret = -1;
+
 #if USE_KQUEUE
+	struct kevent ev;
+
+	EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+
+	ret = kevent(fdw->kq, &ev, 1, NULL, 0, NULL);
 #else
-	return epoll_ctl(fdw->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+	ret = epoll_ctl(fdw->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 #endif
+
+	return ret;
 }
 
 int
-fdwatcher_wait(FdWatcher *fdw, void **events, int nevents)
+fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 {
-	fdw = fdw;
-	events = events;
-	nevents = nevents;
-	int timeout = -1;
 	int num_events = -1;
+
 #if USE_KQUEUE
+	struct kevent kq_events[nevents];
+	struct timespec ts;
+	struct timespec *tsp = NULL;
+
+	if (timeout != -1) {
+		ts.tv_sec = timeout;
+		ts.tv_nsec = 0;
+		tsp = &ts;
+	}
+
+	num_events = kevent(fdw->kq, NULL, 0, kq_events, nevents, tsp);
+	for (int i = 0; i < nevents; i++) {
+		struct kevent ev = kq_events[i];
+		events[i] = ev.udata;
+	}
 #else
 	struct epoll_event ep_events[nevents];
+
 	num_events = epoll_wait(fdw->epoll_fd, ep_events, nevents, timeout);
 	for (int i = 0; i < nevents; i++) {
 		struct epoll_event ev = ep_events[i];
 		events[i] = ev.data.ptr;
 	}
 #endif
+
 	return num_events;
 }
 
@@ -88,6 +132,8 @@ fdwatcher_destroy(FdWatcher *fdw)
 	}
 
 #if USE_KQUEUE
+	assert(fdw->kq >= 0);
+	close(fdw->kq);
 #else
 	assert(fdw->epoll_fd >= 0);
 	close(fdw->epoll_fd);
