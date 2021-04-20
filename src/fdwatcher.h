@@ -16,4 +16,7 @@ typedef struct fdwatcher {
 } FdWatcher;
 
 FdWatcher *fdwatcher_create();
-void fdwatcher_destroy(FdWatcher *);
+int fdwatcher_add(FdWatcher *fdw, int fd, void *ptr);
+int fdwatcher_remove(FdWatcher *fdw, int fd);
+int fdwatcher_wait(FdWatcher *fdw, void **events, int nevents);
+void fdwatcher_destroy(FdWatcher *fdw);

@@ -204,11 +204,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#if USE_KQUEUE
-#include <sys/event.h>
-#else
-#include <sys/epoll.h>
-#endif
+#include "fdwatcher.h"
 
 // app detauls
 #define PROG_NAME	"sshp"
@@ -327,8 +323,8 @@ static char **remote_command = {NULL};
 // Base SSH Command
 static char *base_ssh_command[MAX_ARGS] = {NULL};
 
-// Epoll instance
-static int epoll_fd;
+// FdWatcher instance
+static FdWatcher *fdw = NULL;
 
 // If a newline was printed (used for group mode only)
 static bool newline_printed = true;
@@ -1060,14 +1056,8 @@ static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
 	FdEvent *fdev = fdev_create(host, type);
-	struct epoll_event ev;
 
-	ev.events = EPOLLIN;
-	ev.data.ptr = fdev;
-
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fdev->fd, &ev) == -1) {
-		err(3, "epoll_ctl add");
-	}
+	fdwatcher_add(fdw, fdev->fd, fdev);
 }
 
 /*
@@ -1361,7 +1351,7 @@ read_active_fd(FdEvent *fdev)
 		// done reading!
 		if (bytes == 0) {
 			// remove the fd and close it
-			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
+			fdwatcher_remove(fdw, *fd);
 			close(*fd);
 			*fd = -2;
 
@@ -1423,7 +1413,7 @@ read_active_fd(FdEvent *fdev)
 static void
 finish_join_mode(int num_hosts)
 {
-	int *count = safe_malloc(sizeof (int) * num_hosts, "finish_join_mode");
+	int count[num_hosts];
 	int idx = 0;
 
 	// loop the hosts to check and categorize their output
@@ -1493,8 +1483,6 @@ finish_join_mode(int num_hosts)
 
 		printf("\n");
 	}
-
-	free(count);
 }
 
 /*
@@ -1519,7 +1507,7 @@ main_loop(int num_hosts)
 	Host *cur_host = hosts;
 	int done = 0;
 	int outstanding = 0;
-	struct epoll_event events[EPOLL_MAX_EVENTS];
+	void *fdevs[EPOLL_MAX_EVENTS];
 
 	if (opts.mode == MODE_JOIN && stdout_isatty) {
 		print_progress_line(done, num_hosts);
@@ -1547,19 +1535,17 @@ main_loop(int num_hosts)
 		}
 
 		// wait for fd events
-		num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
-		    EPOLL_WAIT_TIMEOUT);
+		num_events = fdwatcher_wait(fdw, fdevs, EPOLL_MAX_EVENTS);
 		if (num_events == -1) {
 			if (errno == EINTR) {
 				continue;
 			}
-			err(3, "epoll_wait");
+			err(3, "fdwatcher_wait");
 		}
 
 		// loop fd events
 		for (int i = 0; i < num_events; i++) {
-			struct epoll_event ev = events[i];
-			FdEvent *fdev = ev.data.ptr;
+			FdEvent *fdev = fdevs[i];
 			Host *host = fdev->host;
 
 			assert(host != NULL);
@@ -1861,9 +1847,9 @@ main(int argc, char **argv)
 	close(dev_null_fd);
 
 	// create shared epoll instance
-	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-	if (epoll_fd == -1) {
-		err(3, "epoll_create1");
+	fdw = fdwatcher_create();
+	if (fdw == NULL) {
+		err(3, "fdwatcher_create");
 	}
 
 	// handle signals
@@ -1931,7 +1917,7 @@ main(int argc, char **argv)
 	}
 
 	// tidy up
-	close(epoll_fd);
+	fdwatcher_destroy(fdw);
 
 	// check exit codes and free memory
 	host = hosts;
