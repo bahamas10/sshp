@@ -200,10 +200,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/epoll.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#if USE_KQUEUE
+#include <sys/event.h>
+#else
+#include <sys/epoll.h>
+#endif
 
 // app detauls
 #define PROG_NAME	"sshp"

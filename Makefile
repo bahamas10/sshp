@@ -1,10 +1,23 @@
 CC := cc
 CFLAGS := -Wall -Werror -Wextra -Wpedantic -O2
 PREFIX ?= /usr/local
+UNAME := $(shell uname -s)
+
+# check if epoll (default) or kqueue
+ifeq ($(UNAME),Darwin)
+    USE_KQUEUE ?= 1
+else ifeq ($(UNAME),FreeBSD)
+    USE_KQUEUE ?= 1
+else
+    USE_KQUEUE ?= 0
+endif
 
 # build targets
-sshp: src/sshp.c
-	$(CC) -o $@ $(CFLAGS) $^
+sshp: src/sshp.c src/fdwatcher.o
+	$(CC) -o $@ -D $(CFLAGS) $^
+
+src/fdwatcher.o: src/fdwatcher.c src/fdwatcher.h
+	$(CC) -o $@ -c -D USE_KQUEUE=$(USE_KQUEUE) $(CFLAGS) $<
 
 .PHONY: man
 man: man/sshp.1
@@ -18,6 +31,7 @@ all: sshp man
 .PHONY: clean
 clean:
 	rm -f sshp
+	rm -f src/*.o
 
 .PHONY: clean-man
 clean-man:
