@@ -452,37 +452,37 @@ print_usage(FILE *s)
 	fprintf(s, "\n");
 	// options
 	fprintf(s, "%sOPTIONS:%s\n", ylw, rst);
-	fprintf(s, "%s  -a, --anonymous            %s", grn, rst);
+	fprintf(s, "%s  -a%s,%s --anonymous            %s", grn, rst, grn, rst);
 	fprintf(s, "Hide hostname prefix, defaults to %sfalse%s.\n", grn, rst);
-	fprintf(s, "%s  -c, --color <on|off|auto>  %s", grn, rst);
+	fprintf(s, "%s  -c%s,%s --color <on|off|auto>  %s", grn, rst, grn, rst);
 	fprintf(s, "Set color output, defaults to %sauto%s.\n", grn, rst);
-	fprintf(s, "%s  -d, --debug                %s", grn, rst);
+	fprintf(s, "%s  -d%s,%s --debug                %s", grn, rst, grn, rst);
 	fprintf(s, "Enable debug info, defaults to %sfalse%s.\n", grn, rst);
-	fprintf(s, "%s  -e, --exit-codes           %s", grn, rst);
+	fprintf(s, "%s  -e%s,%s --exit-codes           %s", grn, rst, grn, rst);
 	fprintf(s, "Show command exit codes, defaults to %sfalse%s.\n",
 	    grn, rst);
-	fprintf(s, "%s  -f, --file <file>          %s", grn, rst);
+	fprintf(s, "%s  -f%s,%s --file <file>          %s", grn, rst, grn, rst);
 	fprintf(s, "A file of hosts separated by newlines, ");
 	fprintf(s, "defaults to %sstdin%s.\n", grn, rst);
-	fprintf(s, "%s  -g, --group                %s", grn, rst);
+	fprintf(s, "%s  -g%s,%s --group                %s", grn, rst, grn, rst);
 	fprintf(s, "Group output by hostname (%sgroup mode%s).\n", grn, rst);
-	fprintf(s, "%s  -h, --help                 %s", grn, rst);
+	fprintf(s, "%s  -h%s,%s --help                 %s", grn, rst, grn, rst);
 	fprintf(s, "Print this message and exit.\n");
-	fprintf(s, "%s  -j, --join                 %s", grn, rst);
+	fprintf(s, "%s  -j%s,%s --join                 %s", grn, rst, grn, rst);
 	fprintf(s, "Join hosts together by output (%sjoin mode%s).\n",
 	    grn, rst);
-	fprintf(s, "%s  -m, --max-jobs <num>       %s", grn, rst);
+	fprintf(s, "%s  -m%s,%s --max-jobs <num>       %s", grn, rst, grn, rst);
 	fprintf(s, "Max processes to run concurrently, defaults to %s50%s.\n",
 	    grn, rst);
-	fprintf(s, "%s  -n, --dry-run              %s", grn, rst);
+	fprintf(s, "%s  -n%s,%s --dry-run              %s", grn, rst, grn, rst);
 	fprintf(s, "Don't actually execute subprocesses.\n");
-	fprintf(s, "%s  -s, --silent               %s", grn, rst);
+	fprintf(s, "%s  -s%s,%s --silent               %s", grn, rst, grn, rst);
 	fprintf(s, "Silence all output subprocess stdio, ");
 	fprintf(s, "defaults to %sfalse%s.\n", grn, rst);
-	fprintf(s, "%s  -t, --trim                 %s", grn, rst);
+	fprintf(s, "%s  -t%s,%s --trim                 %s", grn, rst, grn, rst);
 	fprintf(s, "Trim hostnames (remove domain) on output, ");
 	fprintf(s, "defaults to %sfalse%s.\n", grn, rst);
-	fprintf(s, "%s  -v, --version              %s", grn, rst);
+	fprintf(s, "%s  -v%s,%s --version              %s", grn, rst, grn, rst);
 	fprintf(s, "Print the version number and exit.\n");
 	fprintf(s, "%s  --max-line-length <num>    %s", grn, rst);
 	fprintf(s, "Maximum line length (in %sline mode%s), ", grn, rst);
@@ -495,15 +495,15 @@ print_usage(FILE *s)
 	// ssh options
 	fprintf(s, "%sSSH OPTIONS:%s (passed directly to ssh)\n",
 	    ylw, rst);
-	fprintf(s, "%s  -i, --identity <ident>     %s", grn, rst);
+	fprintf(s, "%s  -i%s,%s --identity <ident>     %s", grn, rst, grn, rst);
 	fprintf(s, "ssh identity file to use.\n");
-	fprintf(s, "%s  -l, --login <name>         %s", grn, rst);
+	fprintf(s, "%s  -l%s,%s --login <name>         %s", grn, rst, grn, rst);
 	fprintf(s, "The username to login as.\n");
-	fprintf(s, "%s  -o, --option <key=val>     %s", grn, rst);
+	fprintf(s, "%s  -o%s,%s --option <key=val>     %s", grn, rst, grn, rst);
 	fprintf(s, "ssh option passed in key=value form.\n");
-	fprintf(s, "%s  -p, --port <port>          %s", grn, rst);
+	fprintf(s, "%s  -p%s,%s --port <port>          %s", grn, rst, grn, rst);
 	fprintf(s, "The ssh port.\n");
-	fprintf(s, "%s  -q, --quiet                %s", grn, rst);
+	fprintf(s, "%s  -q%s,%s --quiet                %s", grn, rst, grn, rst);
 	fprintf(s, "Run ssh in quiet mode.\n");
 	fprintf(s, "\n");
 	// see more
