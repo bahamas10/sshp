@@ -46,8 +46,12 @@ verify 0 ./sshp -h
 # no arguments is a user error
 verify 2 ./sshp
 
+# bad hosts file
+verify 2 ./sshp -f / cmd
+verify 2 ./sshp -f /should-not-exist cmd
+
 # no hosts specified is currently an error
-verify 2 ./sshp -f /dev/null foo
+verify 2 ./sshp -f /dev/null cmd
 
 # invalid max parallelism
 verify 2 ./sshp -m
