@@ -22,22 +22,22 @@
  * 3. Start the "Main loop" (in function `main_loop`).
  *   a. Loop the hosts and create subprocesses as required.
  *     1. Create pipes for child stdio.
- *     2. Add the pipes to epoll to watch for events.
+ *     2. Add the pipes to FdWatcher to watch for events.
  *   b. Process fd events for any subprocess stdio pipes.
  *     1. Read the data until done or EWOULDBLOCK.
  *     2. Check if all stdio streams are done.
  *       a. Reap the process if all stdio streams are done.
  * 4. Clean up and exit.
  *
- * Note that all of sshp works in a single thread and relies on epoll and
+ * Note that all of sshp works in a single thread and relies on FdWatcher and
  * non-blocking fd reads to handle data as it comes in.
  *
  * Each child process will have one or two pipe(s) created to capture their
- * output.  These fd's will be added to epoll to watch for any events (child
- * output) and epoll_wait will be invoked to react to new data.  When all the
- * stdio pipes for a single child process have finished (1) the fd will be
- * closed, (2) the fd will be unregistered from epoll, and (3) waitpid will be
- * called on the child to reap it and capture its exit status.
+ * output.  These fd's will be added to fdwatcher to watch for any events
+ * (child output) and fdw_wait will be invoked to react to new data.  When all
+ * the stdio pipes for a single child process have finished (1) the fd will be
+ * closed, (2) the fd will be unregistered from FdWatcher, and (3) waitpid will
+ * be called on the child to reap it and capture its exit status.
  *
  * ----------------------------------------------------------------------------
  *
@@ -96,7 +96,7 @@
  * - FdEvent
  *
  * The FdEvent type represents a single file descriptor and its corresponding
- * Host object.  This struct will be given to epoll, which in turn will be
+ * Host object.  This struct will be given to FdWatcher, which in turn will be
  * given back to us whenever there is an event seen.  This allows for
  * connecting the fd that had the event to the Host and ChildProcess that
  * correspond to it.
@@ -140,11 +140,11 @@
  * should never need to be created manually.  These objects will be created at
  * the beginning of execution and destroyed right before they exit.
  *
- * The FdEvent objects will be created when file descriptors are added to epoll
- * and will be destroyed when the fd has closed and has had its final event.
- * Each FdEvent object will have a pointer to its corresponding Host object,
- * but this will just be a reference.  This means that destroying an FdEvent
- * will not result in the connected Host object being destroyed.
+ * The FdEvent objects will be created when file descriptors are added to
+ * FdWatcher and will be destroyed when the fd has closed and has had its final
+ * event.  Each FdEvent object will have a pointer to its corresponding Host
+ * object, but this will just be a reference.  This means that destroying an
+ * FdEvent will not result in the connected Host object being destroyed.
  *
  * ----------------------------------------------------------------------------
  *
@@ -176,7 +176,7 @@
  *  2: Incorrect usage - the user supplied something incorrect preventing sshp
  *     from being able to run (unknown options, invalid host file, etc.).
  *  3: Program failure - caused by some failing in the system preventing sshp
- *     from being able to run (malloc failure, epoll failure, etc.).
+ *     from being able to run (malloc failure, FdWatcher failure, etc.).
  *  4: sshp killed by SIGTERM or SIGINT.
  *  *: Anything else - probably a blown assertion.
  *
@@ -213,9 +213,9 @@
 #define PROG_SOURCE	"https://github.com/bahamas10/sshp"
 #define PROG_LICENSE	"MIT License"
 
-// epoll options
-#define EPOLL_MAX_EVENTS	50
-#define EPOLL_WAIT_TIMEOUT	-1
+// FdWatcher options
+#define FDW_MAX_EVENTS		50
+#define FDW_WAIT_TIMEOUT	-1
 
 // maximum number of arguments for a child process
 #define MAX_ARGS	256
@@ -1509,7 +1509,7 @@ main_loop(int num_hosts)
 	Host *cur_host = hosts;
 	int done = 0;
 	int outstanding = 0;
-	void *fdevs[EPOLL_MAX_EVENTS];
+	void *fdevs[FDW_MAX_EVENTS];
 
 	if (opts.mode == MODE_JOIN && stdout_isatty) {
 		print_progress_line(done, num_hosts);
@@ -1537,7 +1537,8 @@ main_loop(int num_hosts)
 		}
 
 		// wait for fd events
-		num_events = fdwatcher_wait(fdw, fdevs, EPOLL_MAX_EVENTS, EPOLL_WAIT_TIMEOUT);
+		num_events = fdwatcher_wait(fdw, fdevs, FDW_MAX_EVENTS,
+		    FDW_WAIT_TIMEOUT);
 		if (num_events == -1) {
 			if (errno == EINTR) {
 				continue;
