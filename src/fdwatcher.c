@@ -1,3 +1,15 @@
+/*
+ * FdWatcher - File Descriptor Watcher Interface.
+ *
+ * See the accompanying header file for more information.
+ */
+
+/*
+ * Author: Dave Eddy <dave@daveeddy.com>
+ * Date: April 21, 2021
+ * License: MIT
+ */
+
 #include <assert.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,6 +22,9 @@
 
 #include "fdwatcher.h"
 
+/*
+ * Return event interface type as a string.
+ */
 const char *
 fdwatcher_ev_interface()
 {
@@ -20,6 +35,9 @@ fdwatcher_ev_interface()
 #endif
 }
 
+/*
+ * Create an FdWatcher object.
+ */
 FdWatcher *
 fdwatcher_create()
 {
@@ -48,6 +66,9 @@ fail:
 	return NULL;
 }
 
+/*
+ * Add a file descriptor to the watchlist.
+ */
 int
 fdwatcher_add(FdWatcher *fdw, int fd, void *ptr)
 {
@@ -72,6 +93,9 @@ fdwatcher_add(FdWatcher *fdw, int fd, void *ptr)
 	return ret;
 }
 
+/*
+ * Remove a file descriptor from the watchlist.
+ */
 int
 fdwatcher_remove(FdWatcher *fdw, int fd)
 {
@@ -90,12 +114,16 @@ fdwatcher_remove(FdWatcher *fdw, int fd)
 	return ret;
 }
 
+/*
+ * Wait for fd events.
+ */
 int
 fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 {
 	int num_events = -1;
 
 #if USE_KQUEUE
+	// kqueue requires a timespec for the timeout.
 	struct kevent kq_events[nevents];
 	struct timespec ts;
 	struct timespec *tsp = NULL;
@@ -124,6 +152,9 @@ fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 	return num_events;
 }
 
+/*
+ * Destroy an FdWatcher object.
+ */
 void
 fdwatcher_destroy(FdWatcher *fdw)
 {

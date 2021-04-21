@@ -24,8 +24,8 @@ Then optionally run `make install` to install `sshp`:
     $ sshp -v
     v0.0.0
 
-`sshp` requires a kernel that supports `epoll` to run.  This has been tested on
-both Linux and illumos Operating Systems.
+`sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
+been tested on Linux, illumos, MacOS, and FreeBSD.
 
 About
 -----
