@@ -113,8 +113,8 @@ $ sshp -h
         _
   _____| |_  _ __     Parallel SSH Executor (v0.0.0)
  (_-<_-< ' \| '_ \    Source: https://github.com/bahamas10/sshp
- /__/__/_||_| .__/    MIT License
-            |_|
+ /__/__/_||_| .__/    Compiled: Apr 21 2021 03:18:29 (using epoll)
+            |_|       MIT License
 
 Parallel ssh with streaming output.
 
