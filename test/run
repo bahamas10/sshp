@@ -6,7 +6,7 @@
 # Date: April 14, 2021
 # License: MIT
 
-hostfile='./assets/test-host-file.txt'
+hostfile=$1
 
 fatal() {
 	echo "$@" >&2
@@ -34,6 +34,7 @@ verify() {
 	fi
 }
 
+[[ -n $hostfile ]] || fatal 'host file must be passed as arg 1'
 [[ -f $hostfile ]] || fatal "$hostfile doesn't exist"
 
 # -v should just exit 0

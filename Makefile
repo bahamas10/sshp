@@ -43,7 +43,7 @@ clean-all: clean clean-man
 # test targets
 .PHONY: test
 test: sshp
-	./test
+	./test/run ./test/hosts.txt
 
 # install/uninstall targets
 .PHONY: install
