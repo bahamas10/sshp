@@ -22,22 +22,22 @@
  * 3. Start the "Main loop" (in function `main_loop`).
  *   a. Loop the hosts and create subprocesses as required.
  *     1. Create pipes for child stdio.
- *     2. Add the pipes to epoll to watch for events.
+ *     2. Add the pipes to FdWatcher to watch for events.
  *   b. Process fd events for any subprocess stdio pipes.
  *     1. Read the data until done or EWOULDBLOCK.
  *     2. Check if all stdio streams are done.
  *       a. Reap the process if all stdio streams are done.
  * 4. Clean up and exit.
  *
- * Note that all of sshp works in a single thread and relies on epoll and
+ * Note that all of sshp works in a single thread and relies on FdWatcher and
  * non-blocking fd reads to handle data as it comes in.
  *
  * Each child process will have one or two pipe(s) created to capture their
- * output.  These fd's will be added to epoll to watch for any events (child
- * output) and epoll_wait will be invoked to react to new data.  When all the
- * stdio pipes for a single child process have finished (1) the fd will be
- * closed, (2) the fd will be unregistered from epoll, and (3) waitpid will be
- * called on the child to reap it and capture its exit status.
+ * output.  These fd's will be added to fdwatcher to watch for any events
+ * (child output) and fdw_wait will be invoked to react to new data.  When all
+ * the stdio pipes for a single child process have finished (1) the fd will be
+ * closed, (2) the fd will be unregistered from FdWatcher, and (3) waitpid will
+ * be called on the child to reap it and capture its exit status.
  *
  * ----------------------------------------------------------------------------
  *
@@ -96,7 +96,7 @@
  * - FdEvent
  *
  * The FdEvent type represents a single file descriptor and its corresponding
- * Host object.  This struct will be given to epoll, which in turn will be
+ * Host object.  This struct will be given to FdWatcher, which in turn will be
  * given back to us whenever there is an event seen.  This allows for
  * connecting the fd that had the event to the Host and ChildProcess that
  * correspond to it.
@@ -140,11 +140,11 @@
  * should never need to be created manually.  These objects will be created at
  * the beginning of execution and destroyed right before they exit.
  *
- * The FdEvent objects will be created when file descriptors are added to epoll
- * and will be destroyed when the fd has closed and has had its final event.
- * Each FdEvent object will have a pointer to its corresponding Host object,
- * but this will just be a reference.  This means that destroying an FdEvent
- * will not result in the connected Host object being destroyed.
+ * The FdEvent objects will be created when file descriptors are added to
+ * FdWatcher and will be destroyed when the fd has closed and has had its final
+ * event.  Each FdEvent object will have a pointer to its corresponding Host
+ * object, but this will just be a reference.  This means that destroying an
+ * FdEvent will not result in the connected Host object being destroyed.
  *
  * ----------------------------------------------------------------------------
  *
@@ -176,7 +176,7 @@
  *  2: Incorrect usage - the user supplied something incorrect preventing sshp
  *     from being able to run (unknown options, invalid host file, etc.).
  *  3: Program failure - caused by some failing in the system preventing sshp
- *     from being able to run (malloc failure, epoll failure, etc.).
+ *     from being able to run (malloc failure, FdWatcher failure, etc.).
  *  4: sshp killed by SIGTERM or SIGINT.
  *  *: Anything else - probably a blown assertion.
  *
@@ -200,10 +200,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/epoll.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "fdwatcher.h"
 
 // app detauls
 #define PROG_NAME	"sshp"
@@ -212,9 +213,9 @@
 #define PROG_SOURCE	"https://github.com/bahamas10/sshp"
 #define PROG_LICENSE	"MIT License"
 
-// epoll options
-#define EPOLL_MAX_EVENTS	50
-#define EPOLL_WAIT_TIMEOUT	-1
+// FdWatcher options
+#define FDW_MAX_EVENTS		50
+#define FDW_WAIT_TIMEOUT	-1
 
 // maximum number of arguments for a child process
 #define MAX_ARGS	256
@@ -322,8 +323,8 @@ static char **remote_command = {NULL};
 // Base SSH Command
 static char *base_ssh_command[MAX_ARGS] = {NULL};
 
-// Epoll instance
-static int epoll_fd;
+// FdWatcher instance
+static FdWatcher *fdw = NULL;
 
 // If a newline was printed (used for group mode only)
 static bool newline_printed = true;
@@ -415,8 +416,10 @@ print_usage(FILE *s)
 	fprintf(s, "%s (_-<_-< ' \\| '_ \\%s   ", mag, rst);
 	fprintf(s, "%s Source: %s%s\n", grn, PROG_SOURCE, rst);
 	fprintf(s, "%s /__/__/_||_| .__/%s   ", mag, rst);
+	fprintf(s, "%s Compiled: %s %s (using %s)%s\n", grn, __DATE__,
+	    __TIME__, fdwatcher_ev_interface(), rst);
+	fprintf(s, "%s            |_|   %s   ", mag, rst);
 	fprintf(s, "%s %s%s\n", grn, PROG_LICENSE, rst);
-	fprintf(s, "%s            |_|   %s   \n", mag, rst);
 	fprintf(s, "\n");
 	fprintf(s, "Parallel ssh with streaming output.\n");
 	fprintf(s, "\n");
@@ -1049,25 +1052,19 @@ spawn_child_process(Host *host)
 }
 
 /*
- * Register a specific fd to epoll.
+ * Register a specific fd to the fdwatcher..
  */
 static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
 	FdEvent *fdev = fdev_create(host, type);
-	struct epoll_event ev;
 
-	ev.events = EPOLLIN;
-	ev.data.ptr = fdev;
-
-	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fdev->fd, &ev) == -1) {
-		err(3, "epoll_ctl add");
-	}
+	fdwatcher_add(fdw, fdev->fd, fdev);
 }
 
 /*
  * Given a Host object that has had its child process spawned add both of its
- * pipes fds to the epoll watcher for events.
+ * pipes fds to the fdwatcher for events.
  */
 static void
 register_child_process_fds(Host *host)
@@ -1356,7 +1353,7 @@ read_active_fd(FdEvent *fdev)
 		// done reading!
 		if (bytes == 0) {
 			// remove the fd and close it
-			epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *fd, NULL);
+			fdwatcher_remove(fdw, *fd);
 			close(*fd);
 			*fd = -2;
 
@@ -1418,7 +1415,7 @@ read_active_fd(FdEvent *fdev)
 static void
 finish_join_mode(int num_hosts)
 {
-	int *count = safe_malloc(sizeof (int) * num_hosts, "finish_join_mode");
+	int count[num_hosts];
 	int idx = 0;
 
 	// loop the hosts to check and categorize their output
@@ -1488,8 +1485,6 @@ finish_join_mode(int num_hosts)
 
 		printf("\n");
 	}
-
-	free(count);
 }
 
 /*
@@ -1514,7 +1509,7 @@ main_loop(int num_hosts)
 	Host *cur_host = hosts;
 	int done = 0;
 	int outstanding = 0;
-	struct epoll_event events[EPOLL_MAX_EVENTS];
+	void *fdevs[FDW_MAX_EVENTS];
 
 	if (opts.mode == MODE_JOIN && stdout_isatty) {
 		print_progress_line(done, num_hosts);
@@ -1542,19 +1537,18 @@ main_loop(int num_hosts)
 		}
 
 		// wait for fd events
-		num_events = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS,
-		    EPOLL_WAIT_TIMEOUT);
+		num_events = fdwatcher_wait(fdw, fdevs, FDW_MAX_EVENTS,
+		    FDW_WAIT_TIMEOUT);
 		if (num_events == -1) {
 			if (errno == EINTR) {
 				continue;
 			}
-			err(3, "epoll_wait");
+			err(3, "fdwatcher_wait");
 		}
 
 		// loop fd events
 		for (int i = 0; i < num_events; i++) {
-			struct epoll_event ev = events[i];
-			FdEvent *fdev = ev.data.ptr;
+			FdEvent *fdev = fdevs[i];
 			Host *host = fdev->host;
 
 			assert(host != NULL);
@@ -1855,10 +1849,10 @@ main(int argc, char **argv)
 	}
 	close(dev_null_fd);
 
-	// create shared epoll instance
-	epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-	if (epoll_fd == -1) {
-		err(3, "epoll_create1");
+	// create shared fdwatcher instance
+	fdw = fdwatcher_create();
+	if (fdw == NULL) {
+		err(3, "fdwatcher_create");
 	}
 
 	// handle signals
@@ -1926,7 +1920,7 @@ main(int argc, char **argv)
 	}
 
 	// tidy up
-	close(epoll_fd);
+	fdwatcher_destroy(fdw);
 
 	// check exit codes and free memory
 	host = hosts;
