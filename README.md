@@ -195,8 +195,8 @@ compatible with the original Node.js version with some slight alterations:
 - `-b` has been changed to `-c off` (disable color output).
 - `-N` has been removed in favor of `-o StrictHostKeyChecking=no`.
 - `-o` has been added to allow for any ssh option to be passed in.
-- `-u` has been removed.
-- `-y` has been removed.
+- `-u` has been removed (not applicable without `npm`).
+- `-y` has been removed in favor of `-o RequestTTY=force`.
 
 For more information on why `sshp` was ported from JavaScript to C see [this
 blog post](blog).
