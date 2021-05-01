@@ -603,13 +603,27 @@ kill_running_processes()
 }
 
 /*
+ * Simple signal num -> string converter.
+ */
+static const char *
+signal_to_str(int signum)
+{
+	switch (signum) {
+	case SIGTERM: return "SIGTERM";
+	case SIGUSR1: return "SIGUSR1";
+	case SIGINT: return "SIGINT";
+	default: return "(unknown signal)";
+	}
+}
+
+/*
  * Signal handler.
  */
 static void
 signal_handler(int signum)
 {
 	printf("\n%s%s%s received\n",
-	    colors.yellow, strsignal(signum), colors.reset);
+	    colors.yellow, signal_to_str(signum), colors.reset);
 
 	switch (signum) {
 	case SIGUSR1: print_status(); break;
