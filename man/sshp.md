@@ -11,7 +11,7 @@ SYNOPSIS
 
 `sshp [OPTIONS] <command> [args] ...`
 
-`sshp [-f <hosts.txt>] [-j|-g] <command>`
+`sshp [-f <hosts.txt>] [-j | -g] <command>`
 
 DESCRIPTION
 -----------
