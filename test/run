@@ -13,6 +13,15 @@ fatal() {
 	exit 1
 }
 
+#
+# Verify that a command runs and exits with the expected code.
+#
+# Usage: verify <code> <cmd> [args ...]
+#
+# Example:
+#
+# verify 0 true
+# verify 5 sh -c 'exit 5'
 verify() {
 	local code
 	local want=$1
