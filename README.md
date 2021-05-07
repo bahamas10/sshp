@@ -11,18 +11,22 @@ Installation
 
 Pull the source code and run `make` to compile `sshp`:
 
-    $ make
-    cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/sshp.c
-    $ ./sshp -v
-    v0.0.0
+``` console
+$ make
+cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/sshp.c
+$ ./sshp -v
+v0.0.0
+```
 
 Then optionally run `make install` to install `sshp`:
 
-    $ sudo make install
-    cp man/sshp.1 /usr/local/man/man1
-    cp sshp /usr/local/bin
-    $ sshp -v
-    v0.0.0
+``` console
+$ sudo make install
+cp man/sshp.1 /usr/local/man/man1
+cp sshp /usr/local/bin
+$ sshp -v
+v0.0.0
+```
 
 `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
 been tested on Linux, illumos, MacOS, and FreeBSD.
