@@ -104,8 +104,9 @@ Exit Codes
 - `1` Everything worked but 1 or more children exited with a non-zero code.
 - `2` Incorrect usage - the user supplied something incorrect preventing `sshp`
   from being able to run (unknown options, invalid host file, etc.).
-- `3` Program failure - caused by some failing in the system preventing `sshp`
-  from being able to run (`malloc` failure, `epoll` failure, etc.).
+- `3` Program failure - the program experienced some failing in the system
+  preventing `sshp` from being able to run (`malloc` failure, `epoll` failure,
+  etc.).
 - `4` `sshp` killed by `SIGTERM` or `SIGINT`.
 - `*` Anything else - probably a blown assertion.
 
