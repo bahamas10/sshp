@@ -207,7 +207,7 @@
 
 #include "fdwatcher.h"
 
-// app detauls
+// app details
 #define PROG_NAME	"sshp"
 #define PROG_VERSION	"v0.0.0"
 #define PROG_FULL_NAME	"Parallel SSH Executor"
@@ -846,7 +846,7 @@ make_pipe(int *fd)
 
 /*
  * Push an argument to the ssh base command and bounds check it.
- * The strings passed to this function need to be allocated or contstantly
+ * The strings passed to this function need to be allocated or constantly
  * defined.
  */
 static void
@@ -870,7 +870,7 @@ push_arguments(char *s, ...)
 }
 
 /*
- * Replace the first occurence of char c with '\0' in a string.
+ * Replace the first occurrence of char c with '\0' in a string.
  * Returns true if a replacement was made and false otherwise.
  */
 static bool
@@ -1424,7 +1424,7 @@ read_active_fd(FdEvent *fdev)
  *      current host and strcmp the output.  If the output is the same, assign
  *      it the same index.  If the output is different, skip it for now.
  *   c. Move onto the next host without an index and assign it idx + 1.
- * 2. Print the nuber of unique results seen (how many indices were created).
+ * 2. Print the number of unique results seen (how many indices were created).
  * 3. Loop the indices and print the unique output + the hostnames.
  */
 static void
@@ -1827,7 +1827,7 @@ main(int argc, char **argv)
 	colors.white = "";
 	colors.reset = "";
 
-	// initalized the base ssh command
+	// initialized the base ssh command
 	push_arguments("ssh", NULL);
 
 	// handle CLI options
