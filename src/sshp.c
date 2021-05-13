@@ -1430,8 +1430,9 @@ read_active_fd(FdEvent *fdev)
 static void
 finish_join_mode(int num_hosts)
 {
-	int count[num_hosts];
 	int idx = 0;
+	int *count = safe_malloc(sizeof (int) * num_hosts,
+	    "finish_join_mode count");
 
 	// loop the hosts to check and categorize their output
 	for (Host *h1 = hosts; h1 != NULL; h1 = h1->next) {
@@ -1500,6 +1501,8 @@ finish_join_mode(int num_hosts)
 
 		printf("\n");
 	}
+
+	free(count);
 }
 
 /*
