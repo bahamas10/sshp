@@ -92,7 +92,7 @@ hostname:
 ![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.jpg)
 
 Send the `sshp` process a `SIGSUR1` signal to print out process status
-information while it is running.  In this example a signal was sent twice to
+information while it is running.  In this example, a signal was sent twice to
 the process:
 
 ![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.jpg)
@@ -101,7 +101,7 @@ Exit Codes
 ----------
 
 - `0` Everything worked and all child processes exited successfully.
-- `1` Everything worked but 1 or more children exited with a non-zero code.
+- `1` Everything worked, but 1 or more children exited with a non-zero code.
 - `2` Incorrect usage - the user supplied something incorrect preventing `sshp`
   from being able to run (unknown options, invalid host file, etc.).
 - `3` Program failure - the program experienced some failing in the system
@@ -173,7 +173,7 @@ Tests
 -----
 
 `sshp` comes with a very simple test suite.  It checks for just basic usage and
-sanity, it can be run with `make test`:
+sanity.  It can be run with `make test`:
 
     $ make test
     ./test
@@ -203,7 +203,7 @@ compatible with the original Node.js version with some slight alterations:
 - `-u` has been removed (not applicable without `npm`).
 - `-y` has been removed in favor of `-o RequestTTY=force`.
 
-For more information on why `sshp` was ported from JavaScript to C see [this
+For more information on why `sshp` was ported from JavaScript to C, see [this
 blog post](blog).
 
 License
