@@ -8,6 +8,14 @@
 
 hostfile=$1
 
+# colors
+red=$(tput setaf 1)
+grn=$(tput setaf 2)
+bld=$(tput bold)
+rst=$(tput sgr0)
+
+#
+# print a message to stderr and exit with failure
 fatal() {
 	echo "$@" >&2
 	exit 1
@@ -29,14 +37,14 @@ verify() {
 
 	shift
 
-	echo -n "> ensure [$*] returns $want ... " >&2
+	echo -n "> $bld$*$rst exits $want ... "
 	output=$("$@" 2>&1)
 	code=$?
 
 	if ((code == want)); then
-		echo 'ok' >&2
+		echo "${grn}ok$rst"
 	else
-		echo 'failed!' >&2
+		echo "${red}failed!$rst"
 		echo '- program output -'
 		echo "$output"
 		exit 1
