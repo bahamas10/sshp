@@ -33,7 +33,7 @@
  * non-blocking fd reads to handle data as it comes in.
  *
  * Each child process will have one or two pipe(s) created to capture their
- * output.  These fd's will be added to fdwatcher to watch for any events
+ * output.  These fds will be added to fdwatcher to watch for any events
  * (child output), and fdw_wait will be invoked to react to new data.  When all
  * the stdio pipes for a single child process have finished, (1) the fd will be
  * closed, (2) the fd will be unregistered from FdWatcher, and (3) waitpid will
@@ -53,10 +53,12 @@
  * differing only in how data is buffered from the child processes and
  * printed to the screen.  Line mode buffers the data line-by-line, whereas
  * group mode does no buffering at all and prints the data once it is read from
- * the child.  The last mode however, join, buffers *all* of the data from all
- * of the child processes and outputs once all processes have finished.
- * Instead of grouping the output by host, it is grouped by the output itself
- * to show which hosts had the same output.
+ * the child.
+ *
+ * The last mode, join, however, buffers *all* of the data from all of the child
+ * processes and outputs once all processes have finished.  Instead of grouping
+ * the output by host, it is grouped by the output itself to show which hosts
+ * had the same output.
  *
  * ----------------------------------------------------------------------------
  *
@@ -76,7 +78,7 @@
  * The Host type represents a single host that should be ssh'd into.  Each line
  * in the hosts file that is passed in via stdin or `-f` will have a
  * corresponding Host object created.  The Host type is created to be a
- * linked-list, retaining a pointer to "next" which represents the next host
+ * linked-list, retaining a pointer to "next", which represents the next host
  * that was read in.  As files are read in by `parse_hosts` a new Host is
  * created and added to the end of the linked-list.  This way, the order of the
  * list will match the order of the input file.
@@ -86,7 +88,7 @@
  * The ChildProcess type represents a single child process that should be
  * executed.  This is responsible for storing information for and about the
  * child such as the stdio pipe fds, the exit code (once available), current
- * state, etc.  A ChildProcess starts in the "ready" state, and goes through
+ * state, etc.  A ChildProcess starts in the "ready" state and goes through
  * the following stages:
  *
  * 1. CP_STATE_READY ("ready").
@@ -99,7 +101,7 @@
  * Host object.  This struct will be given to FdWatcher, which in turn will be
  * given back to us whenever there is an event seen.  This allows for
  * connecting the fd that had the event to the Host and ChildProcess that
- * correspond to it.
+ * corresponds to it.
  *
  * The relationship of all of the objects is illustrated below:
  *
@@ -444,7 +446,7 @@ print_usage(FILE *s)
 	fprintf(s, "%s      %s -m 3 -f hosts.txt pgrep -fl process%s\n",
 	    grn, PROG_NAME, rst);
 	fprintf(s, "\n");
-	fprintf(s, "    Upgrade packages on all hosts in the list, ");
+	fprintf(s, "    Upgrade packages on all hosts in the list ");
 	fprintf(s, "one-by-one, grouping the output\n");
 	fprintf(s, "    by host, with debugging output enabled.\n");
 	fprintf(s, "\n");

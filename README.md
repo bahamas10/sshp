@@ -45,7 +45,7 @@ differing only in how data is buffered from the child processes and printed to
 the screen.  Line mode buffers the data line-by-line, whereas group mode does
 no buffering at all and prints the data once it is read from the child.
 
-The last mode however, `join`, buffers *all* of the data from all of the child
+The last mode, `join`, however, buffers *all* of the data from all of the child
 processes and outputs once all processes have finished.  Instead of grouping
 the output by host, it is grouped by the output itself to show which hosts had
 the same output.
@@ -136,7 +136,7 @@ EXAMPLES:
 
       sshp -m 3 -f hosts.txt pgrep -fl process
 
-    Upgrade packages on all hosts in the list, one-by-one, grouping the output
+    Upgrade packages on all hosts in the list one-by-one, grouping the output
     by host, with debugging output enabled.
 
       sshp -m 1 -f hosts.txt -d -g pkg-manager update
