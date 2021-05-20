@@ -113,7 +113,7 @@ Exit Codes
 Usage
 -----
 
-```
+``` console
 $ sshp -h
         _
   _____| |_  _ __     Parallel SSH Executor (v0.0.0)
@@ -175,20 +175,24 @@ Tests
 `sshp` comes with a very simple test suite.  It checks for just basic usage and
 sanity.  It can be run with `make test`:
 
-    $ make test
-    ./test
-    > ensure [./sshp -v] returns 0 ... ok
-    > ensure [./sshp -h] returns 0 ... ok
-    > ensure [./sshp] returns 2 ... ok
-    > ensure [./sshp -f /dev/null foo] returns 2 ... ok
-    > ensure [./sshp -m] returns 2 ... ok
-    > ensure [./sshp -m 0] returns 2 ... ok
-    > ensure [./sshp -m foo] returns 2 ... ok
-    > ensure [./sshp -m -17] returns 2 ... ok
-    > ensure [./sshp -g -j] returns 2 ... ok
-    > ensure [./sshp -n -f ./assets/test-host-file.txt cmd] returns 0 ... ok
-    > ensure [./sshp -n -f - cmd] returns 0 ... ok
-    > ensure [./sshp -n cmd] returns 0 ... ok
+``` console
+$ make test
+./test/run ./test/hosts.txt
+> ./sshp -v exits 0 ... ok
+> ./sshp -h exits 0 ... ok
+> ./sshp exits 2 ... ok
+> ./sshp -f / cmd exits 2 ... ok
+> ./sshp -f /should-not-exist cmd exits 2 ... ok
+> ./sshp -f /dev/null cmd exits 2 ... ok
+> ./sshp -m exits 2 ... ok
+> ./sshp -m 0 exits 2 ... ok
+> ./sshp -m foo exits 2 ... ok
+> ./sshp -m -17 exits 2 ... ok
+> ./sshp -g -j exits 2 ... ok
+> ./sshp -n -f ./test/hosts.txt cmd exits 0 ... ok
+> ./sshp -n -f - cmd exits 0 ... ok
+> ./sshp -n cmd exits 0 ... ok
+```
 
 Comparison to Node.js `sshp`
 ----------------------------
