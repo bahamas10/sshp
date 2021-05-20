@@ -208,7 +208,7 @@ compatible with the original Node.js version with some slight alterations:
 - `-y` has been removed in favor of `-o RequestTTY=force`.
 
 For more information on why `sshp` was ported from JavaScript to C, see [this
-blog post](blog).
+blog post](https://www.daveeddy.com/2021/05/20/sshp-rewrite-from-javascript-to-c/).
 
 License
 -------
