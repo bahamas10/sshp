@@ -34,10 +34,10 @@
  *
  * Each child process will have one or two pipe(s) created to capture their
  * output.  These fds will be added to fdwatcher to watch for any events
- * (child output), and fdw_wait will be invoked to react to new data.  When all
- * the stdio pipes for a single child process have finished, (1) the fd will be
- * closed, (2) the fd will be unregistered from FdWatcher, and (3) waitpid will
- * be called on the child to reap it and capture its exit status.
+ * (child output), and `fdwatcher_wait` will be invoked to react to new data.
+ * When all the stdio pipes for a single child process have finished, (1) the
+ * fd will be closed, (2) the fd will be unregistered from FdWatcher, and (3)
+ * waitpid will be called on the child to reap it and capture its exit status.
  *
  * ----------------------------------------------------------------------------
  *
@@ -71,7 +71,7 @@
  * 3. FdEvent.
  *
  * All 3 types follow the convention of having a `<name>_create` and
- * `<name>_destroy`` function to allocate and free the object created.
+ * `<name>_destroy` function to allocate and free the object created.
  *
  * - Host
  *
@@ -119,7 +119,7 @@
  *   |      | (owner)              | (owner)
  *   |      |                      |
  *   |   +-----------+          +-----------+
- *   |   |           |          |           |
+ *   |   |           | ->next   |           |  ->next        ->next
  *   +-> | Host      |--------> | Host      | --------> ... --------> NULL
  *       |           |          |           |
  *       +-----------+          +-----------+
@@ -136,11 +136,11 @@
  * The Host objects will be created first in the execution of sshp and stored
  * in a linked-list that is globally accessible as the variable "hosts".  Each
  * Host object "owns" a ChildProcess object - meaning that when a Host object
- * is created, a corresponding ChildProcess object will be created with it.
+ * is created a corresponding ChildProcess object will be created with it.
  * Simply put: `host_create` will handle calling `child_process_create` and
- * also `host_destroy` will call `child_process_destroy` - a ChildProcess
+ * `host_destroy` will handle calling `child_process_destroy` - a ChildProcess
  * should never need to be created manually.  These objects will be created at
- * the beginning of execution and destroyed right before they exit.
+ * the beginning of execution and destroyed right before process exit.
  *
  * The FdEvent objects will be created when file descriptors are added to
  * FdWatcher and will be destroyed when the fd has closed and has had its final
@@ -164,8 +164,9 @@
  *
  * SIGTERM and SIGINT both result in the same actions being taken: all running
  * child processes are killed via SIGTERM and the program exits with code 4.
- * There may be a better way to take care of this situation - if so, this code
- * should be updated.
+ * There may be a better way to take care of this situation (killing all
+ * outstanding children in the event of an early process death) - if so, this
+ * code should be updated.
  *
  * ----------------------------------------------------------------------------
  *
