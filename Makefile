@@ -1,5 +1,5 @@
-CC := cc
-CFLAGS := -Wall -Werror -Wextra -Wpedantic -O2
+CC ?= cc
+CFLAGS ?= -Wall -Werror -Wextra -Wpedantic -O2
 PREFIX ?= /usr/local
 UNAME := $(shell uname -s)
 
@@ -47,7 +47,7 @@ test: sshp
 
 # install/uninstall targets
 .PHONY: install
-install: sshp man/sshp.1
+install: sshp
 	cp man/sshp.1 $(PREFIX)/man/man1
 	cp sshp $(PREFIX)/bin
 
