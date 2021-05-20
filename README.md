@@ -13,9 +13,10 @@ Pull the source code and run `make` to compile `sshp`:
 
 ``` console
 $ make
-cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/sshp.c
+cc -o src/fdwatcher.o -c -D USE_KQUEUE=0 -Wall -Werror -Wextra -Wpedantic -O2 src/fdwatcher.c
+cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/sshp.c src/fdwatcher.o
 $ ./sshp -v
-v0.0.0
+v1.0.0
 ```
 
 Then optionally run `make install` to install `sshp`:
@@ -25,7 +26,7 @@ $ sudo make install
 cp man/sshp.1 /usr/local/man/man1
 cp sshp /usr/local/bin
 $ sshp -v
-v0.0.0
+v1.0.0
 ```
 
 `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
@@ -116,9 +117,9 @@ Usage
 ``` console
 $ sshp -h
         _
-  _____| |_  _ __     Parallel SSH Executor (v0.0.0)
+  _____| |_  _ __     Parallel SSH Executor (v1.0.0)
  (_-<_-< ' \| '_ \    Source: https://github.com/bahamas10/sshp
- /__/__/_||_| .__/    Compiled: Apr 21 2021 03:18:29 (using epoll)
+ /__/__/_||_| .__/    Compiled: May 20 2021 14:10:50 (using epoll)
             |_|       MIT License
 
 Parallel ssh with streaming output.
