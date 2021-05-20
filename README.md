@@ -6,6 +6,8 @@ terminal.  By default, `sshp` will read a file of newline-separated hostnames
 or IPs and fork ssh subprocesses for them, redirecting the stdout and stderr
 streams of the child line-by-line to stdout of `sshp` itself.
 
+![sshp-logo](https://www.daveeddy.com/static/media/github/sshp/c/logo.jpg)
+
 Installation
 ------------
 
