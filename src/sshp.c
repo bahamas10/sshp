@@ -212,7 +212,7 @@
 
 // app details
 #define PROG_NAME	"sshp"
-#define PROG_VERSION	"v1.0.0"
+#define PROG_VERSION	"v1.0.1"
 #define PROG_FULL_NAME	"Parallel SSH Executor"
 #define PROG_SOURCE	"https://github.com/bahamas10/sshp"
 #define PROG_LICENSE	"MIT License"
