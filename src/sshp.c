@@ -631,12 +631,22 @@ signal_handler(int signum)
 
 	switch (signum) {
 	case SIGUSR1: print_status(); break;
-	case SIGINT: kill_running_processes(); exit(4);
-	case SIGTERM: kill_running_processes(); exit(4);
+	case SIGINT: exit(4);
+	case SIGTERM: exit(4);
 	default: errx(3, "unknown signal handled: %d", signum);
 	}
 
 	printf("\n");
+}
+
+/*
+ * atexit handler.  Kill any running child processes that are possibly
+ * outstanding when exit is called.
+ */
+static void
+atexit_handler()
+{
+	kill_running_processes();
 }
 
 /*
@@ -1877,7 +1887,10 @@ main(int argc, char **argv)
 		err(3, "fdwatcher_create");
 	}
 
-	// handle signals
+	// handle signals and exit
+	if (atexit(atexit_handler) != 0) {
+		err(3, "register atexit");
+	}
 	if (signal(SIGUSR1, signal_handler) == SIG_ERR) {
 		err(3, "register SIGUSR1");
 	}
