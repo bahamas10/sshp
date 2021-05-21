@@ -887,6 +887,7 @@ lsplit_str(char *s, char c)
 			return true;
 		}
 	}
+
 	return false;
 }
 

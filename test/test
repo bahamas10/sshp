@@ -9,6 +9,7 @@
 hostfile=$1
 
 # colors
+[[ -t 1 ]] || tput() { true; }
 red=$(tput setaf 1)
 grn=$(tput setaf 2)
 bld=$(tput bold)
@@ -19,6 +20,12 @@ rst=$(tput sgr0)
 fatal() {
 	echo "$@" >&2
 	exit 1
+}
+
+#
+# sshp wrapper to call the compiled version
+sshp() {
+	../sshp "$@"
 }
 
 #
@@ -37,7 +44,7 @@ verify() {
 
 	shift
 
-	echo -n "> $bld$*$rst exits $want ... "
+	echo -n "$bld$*$rst  exits $want ... "
 	output=$("$@" 2>&1)
 	code=$?
 
@@ -55,33 +62,33 @@ verify() {
 [[ -f $hostfile ]] || fatal "$hostfile doesn't exist"
 
 # -v should just exit 0
-verify 0 ./sshp -v
+verify 0 sshp -v
 
 # -h should just exit 0
-verify 0 ./sshp -h
+verify 0 sshp -h
 
 # no arguments is a user error
-verify 2 ./sshp
+verify 2 sshp
 
 # bad hosts file
-verify 2 ./sshp -f / cmd
-verify 2 ./sshp -f /should-not-exist cmd
+verify 2 sshp -f / cmd
+verify 2 sshp -f /should-not-exist cmd
 
 # no hosts specified is currently an error
-verify 2 ./sshp -f /dev/null cmd
+verify 2 sshp -f /dev/null cmd
 
 # invalid max parallelism
-verify 2 ./sshp -m
-verify 2 ./sshp -m 0
-verify 2 ./sshp -m foo
-verify 2 ./sshp -m -17
+verify 2 sshp -m
+verify 2 sshp -m 0
+verify 2 sshp -m foo
+verify 2 sshp -m -17
 
 # invalid mode combinations
-verify 2 ./sshp -g -j
+verify 2 sshp -g -j
 
 # do a dry run
-verify 0 ./sshp -n -f "$hostfile" cmd
-verify 0 ./sshp -n -f - cmd < "$hostfile"
-verify 0 ./sshp -n cmd < "$hostfile"
+verify 0 sshp -n -f "$hostfile" cmd
+verify 0 sshp -n -f - cmd < "$hostfile"
+verify 0 sshp -n cmd < "$hostfile"
 
 exit 0

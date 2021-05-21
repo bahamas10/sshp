@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+#
+# Very simple .c and .h file style checker. This ensures:
+#
+# - No lines are over 80 characters.
+# - No 2 or more consecutive newlines.
+#
+# Author: Dave Eddy <dave@daveeddy.com>
+# Date: May 21, 2021
+# License: MIT
+
+# max columns
+columns=80
+
+# colors
+[[ -t 1 ]] || tput() { true; }
+red=$(tput setaf 1)
+bld=$(tput bold)
+rst=$(tput sgr0)
+
+# check for lines greater than $columns columns
+over() {
+	local file=$1
+
+	awk "-vcols=$columns" '
+	BEGIN {
+		code = 0;
+	}
+	length($0) > cols {
+		printf("%4-d %s\n", NR, $0);
+		code = 1;
+	}
+	END {
+		exit(code);
+	}
+	' "$file"
+}
+
+# check for consecutive newlines
+newlines() {
+	local file=$1
+
+	awk '
+	BEGIN {
+		code = 0;
+		newlines = 0;
+	}
+	/^$/ {
+		newlines++;
+		if (newlines == 2) {
+			printf("%-4d extra newline(s)\n", NR);
+			code = 1;
+		}
+	}
+	/^.+$/ {
+		newlines = 0;
+	}
+	END {
+		exit(code);
+	}
+	' "$file"
+}
+
+code=0
+for f in "$@"; do
+	echo "${bld}checking:$rst  $f"
+
+	# check columns
+	if ! output=$(over "$f"); then
+		code=1
+		echo
+		echo "${red}error:  lines over $columns columns$rst"
+		echo "$output"
+		echo
+	fi
+
+	# check extra newlines
+	if ! output=$(newlines "$f"); then
+		code=1
+		echo
+		echo "${red}error:  consecutive newlines found$rst"
+		echo "$output"
+		echo
+	fi
+done
+
+exit "$code"

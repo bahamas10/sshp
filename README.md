@@ -172,30 +172,50 @@ MORE:
     See sshp(1) for more information.
 ```
 
-Tests
------
+Tests and Style
+----------------
 
 `sshp` comes with a very simple test suite.  It checks for just basic usage and
 sanity.  It can be run with `make test`:
 
 ``` console
 $ make test
-./test/run ./test/hosts.txt
-> ./sshp -v exits 0 ... ok
-> ./sshp -h exits 0 ... ok
-> ./sshp exits 2 ... ok
-> ./sshp -f / cmd exits 2 ... ok
-> ./sshp -f /should-not-exist cmd exits 2 ... ok
-> ./sshp -f /dev/null cmd exits 2 ... ok
-> ./sshp -m exits 2 ... ok
-> ./sshp -m 0 exits 2 ... ok
-> ./sshp -m foo exits 2 ... ok
-> ./sshp -m -17 exits 2 ... ok
-> ./sshp -g -j exits 2 ... ok
-> ./sshp -n -f ./test/hosts.txt cmd exits 0 ... ok
-> ./sshp -n -f - cmd exits 0 ... ok
-> ./sshp -n cmd exits 0 ... ok
+cd test && ./test hosts.txt
+sshp -v  exits 0 ... ok
+sshp -h  exits 0 ... ok
+sshp  exits 2 ... ok
+sshp -f / cmd  exits 2 ... ok
+sshp -f /should-not-exist cmd  exits 2 ... ok
+sshp -f /dev/null cmd  exits 2 ... ok
+sshp -m  exits 2 ... ok
+sshp -m 0  exits 2 ... ok
+sshp -m foo  exits 2 ... ok
+sshp -m -17  exits 2 ... ok
+sshp -g -j  exits 2 ... ok
+sshp -n -f hosts.txt cmd  exits 0 ... ok
+sshp -n -f - cmd  exits 0 ... ok
+sshp -n cmd  exits 0 ... ok
 ```
+
+Style can be checked with `make check`, this does not require the program to be
+compiled:
+
+``` console
+$ make check
+./test/check src/*.h src/*.c test/* man/*.md
+checking:  src/fdwatcher.h
+checking:  src/fdwatcher.c
+checking:  src/sshp.c
+checking:  test/check
+checking:  test/hosts.txt
+checking:  test/test
+checking:  man/sshp.md
+```
+
+The style check is *very* simple.  It ensures 2 things:
+
+1. No line exceeds 80 columns.
+2. No consecutive blank lines.
 
 Comparison to Node.js `sshp`
 ----------------------------
