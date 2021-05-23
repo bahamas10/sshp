@@ -2,6 +2,10 @@
 
 ## not yet released
 
+(nothing yet)
+
+## `v1.0.2`
+
 - Fix segfault when destroying host objects in `join` mode.
 
 ## `v1.0.1`
