@@ -1796,7 +1796,6 @@ int
 main(int argc, char **argv)
 {
 	FILE *hosts_file = stdin;
-	Host *host;
 	int dev_null_fd;
 	int exit_code = 0;
 	int num_hosts;
@@ -1958,8 +1957,8 @@ main(int argc, char **argv)
 	fdwatcher_destroy(fdw);
 
 	// check exit codes and free memory
-	host = hosts;
-	while (host != NULL) {
+	while (hosts != NULL) {
+		Host *host = hosts;
 		assert(host->cp != NULL);
 
 		if (!opts.dry_run) {
@@ -1969,9 +1968,8 @@ main(int argc, char **argv)
 			}
 		}
 
-		Host *temp = host->next;
+		hosts = host->next;
 		host_destroy(host);
-		host = temp;
 	}
 
 	// get end time and calculate time taken
