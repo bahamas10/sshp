@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# Very simple .c and .h file style checker. This ensures:
+# Very simple file style checker.  Checks include:
 #
 # - No lines are over 80 characters.
 # - No 2 or more consecutive newlines.
+# - Consistent use of tabs and spaces.
 #
 # Author: Dave Eddy <dave@daveeddy.com>
 # Date: May 21, 2021

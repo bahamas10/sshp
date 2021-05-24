@@ -212,10 +212,11 @@ checking:  test/test
 checking:  man/sshp.md
 ```
 
-The style check is *very* simple.  It ensures 2 things:
+The style check is *very* simple.  It ensures:
 
 1. No line exceeds 80 columns.
 2. No consecutive blank lines.
+3. Consistent use of tabs and spaces.
 
 Comparison to Node.js `sshp`
 ----------------------------
