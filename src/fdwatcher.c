@@ -84,10 +84,10 @@ fdwatcher_add(FdWatcher *fdw, int fd, void *ptr)
 #else
 	struct epoll_event ev;
 
-        ev.events = EPOLLIN;
-        ev.data.ptr = ptr;
+	ev.events = EPOLLIN;
+	ev.data.ptr = ptr;
 
-        ret = epoll_ctl(fdw->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+	ret = epoll_ctl(fdw->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 #endif
 
 	return ret;
