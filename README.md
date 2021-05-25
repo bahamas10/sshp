@@ -100,6 +100,20 @@ the process:
 
 ![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.jpg)
 
+Tips and Tricks
+---------------
+
+If one ore more of the hosts you want to ssh into are not in your `known_hosts`
+file it can be really overwhelming to get all of the warning messages / prompts
+to save the host key.  You can manually accept any new keys 1-by-1 with:
+
+    sshp -f hosts.txt -m 1 true
+
+Or, accept all keys without any confirmation or validation (use at your own
+risk):
+
+    sshp -f hosts.txt -o StrictHostKeyChecking=no true
+
 Exit Codes
 ----------
 
