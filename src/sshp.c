@@ -337,7 +337,7 @@ static bool newline_printed = true;
 static bool stdout_isatty;
 
 // CLI options for getopt_long
-static char *short_options = "+ac:def:ghi:jl:m:no:p:qstv";
+static char *short_options = "+ac:def:ghi:jl:m:no:p:qstvx:";
 static struct option long_options[] = {
 	{"max-line-length", required_argument, NULL, 1000},
 	{"max-output-length", required_argument, NULL, 1001},
@@ -359,6 +359,7 @@ static struct option long_options[] = {
 	{"silent", no_argument, NULL, 's'},
 	{"trim", no_argument, NULL, 't'},
 	{"version", no_argument, NULL, 'v'},
+	{"exec", required_argument, NULL, 'x'},
 	{NULL, 0, NULL, 0}
 };
 
@@ -488,6 +489,8 @@ print_usage(FILE *s)
 	fprintf(s, "defaults to %sfalse%s.\n", grn, rst);
 	fprintf(s, "%s  -v%s,%s --version              %s", grn, rst, grn, rst);
 	fprintf(s, "Print the version number and exit.\n");
+	fprintf(s, "%s  -x%s,%s --exec <prog>          %s", grn, rst, grn, rst);
+	fprintf(s, "Program to execute, defaults to %sssh%s.\n", grn, rst);
 	fprintf(s, "%s  --max-line-length <num>    %s", grn, rst);
 	fprintf(s, "Maximum line length (in %sline mode%s), ", grn, rst);
 	fprintf(s, "defaults to %s%d%s.\n", grn, DEFAULT_MAX_LINE_LENGTH, rst);
@@ -1702,6 +1705,7 @@ parse_arguments(int argc, char **argv)
 		case 's': opts.silent = true; break;
 		case 't': opts.trim = true; break;
 		case 'v': printf("%s\n", PROG_VERSION); exit(0);
+		case 'x': base_ssh_command[0] = optarg; break;
 		default: unknown_option = true; break;
 		}
 	}

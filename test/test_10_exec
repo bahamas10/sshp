@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#
+# very simple test for sshp just to verify some basic behavior
+#
+# Author: Dave Eddy <dave@daveeddy.com>
+# Date: April 14, 2021
+# License: MIT
+
+. ./lib/helpers || exit 1
+
+singlehost='./assets/hosts/single-host.txt'
+
+# check all 3 modes, a good command should yield an exit code of 0
+< "$singlehost" verify-cmd 0 sshp -x ./assets/cmd/true arg
+< "$singlehost" verify-cmd 0 sshp -x ./assets/cmd/true -j arg
+< "$singlehost" verify-cmd 0 sshp -x ./assets/cmd/true -g arg
+
+# a bad command should be an exit code of 1
+< "$singlehost" verify-cmd 1 sshp -x ./assets/cmd/false arg
+< "$singlehost" verify-cmd 1 sshp -x ./assets/cmd/false -j arg
+< "$singlehost" verify-cmd 1 sshp -x ./assets/cmd/false -g arg
+
+# ensure that the output is "hello" if -a is specified
+cmd=(sshp -x ./assets/cmd/hello -a arg)
+output=$("${cmd[@]}" < "$singlehost")
+code=$?
+
+verify-equal 0 "$code" "${cmd[*]} code"
+verify-equal 'hello' "$output" "${cmd[*]} stdout"
+
+exit 0

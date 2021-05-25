@@ -19,6 +19,8 @@ for f in "$@"; do
 		echo "${red}error:  $f"
 		echo
 	fi
+
+	echo
 done
 
 exit "$ret"

@@ -84,6 +84,9 @@ OPTIONS
 `-v`, `--version`
   Print the version number and exit.
 
+`-x`, `--exec`
+  Program to execute, defaults to `ssh`.
+
 `--max-line-length` *num*
   Maximum line length (in `line mode` only), defaults to `1024`.
 

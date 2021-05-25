@@ -181,22 +181,34 @@ sanity.  It can be run with `make test`:
 ``` console
 $ make test
 cd test && ./runtest test_*
-running:  ./test_usage
-sshp -v  exits 0 ... ok
-sshp -h  exits 0 ... ok
-sshp  exits 2 ... ok
-sshp -f / cmd  exits 2 ... ok
-sshp -f /should-not-exist cmd  exits 2 ... ok
-sshp -f /dev/null cmd  exits 2 ... ok
-sshp -f ./assets/empty-hosts.txt cmd  exits 2 ... ok
-sshp -m  exits 2 ... ok
-sshp -m 0  exits 2 ... ok
-sshp -m foo  exits 2 ... ok
-sshp -m -17  exits 2 ... ok
-sshp -g -j  exits 2 ... ok
-sshp -n -f ./assets/simple-hosts.txt cmd  exits 0 ... ok
-sshp -n -f - cmd  exits 0 ... ok
-sshp -n cmd  exits 0 ... ok
+running:  ./test_00_usage
+sshp -v  is 0 ... ok
+sshp -h  is 0 ... ok
+sshp  is 2 ... ok
+sshp -f / cmd  is 2 ... ok
+sshp -f /should-not-exist cmd  is 2 ... ok
+sshp -f /dev/null cmd  is 2 ... ok
+sshp -f ./assets/hosts/empty-hosts.txt cmd  is 2 ... ok
+sshp -m  is 2 ... ok
+sshp -m 0  is 2 ... ok
+sshp -m foo  is 2 ... ok
+sshp -m -17  is 2 ... ok
+sshp -g -j  is 2 ... ok
+sshp -n -f ./assets/hosts/simple-hosts.txt cmd  is 0 ... ok
+sshp -n -f - cmd  is 0 ... ok
+sshp -n cmd  is 0 ... ok
+sshp -n -f ./assets/hosts/long-hosts-good.txt cmd  is 0 ... ok
+sshp -n -f ./assets/hosts/long-hosts-bad.txt cmd  is 2 ... ok
+
+running:  ./test_10_exec
+sshp -x ./assets/cmd/true arg  is 0 ... ok
+sshp -x ./assets/cmd/true -j arg  is 0 ... ok
+sshp -x ./assets/cmd/true -g arg  is 0 ... ok
+sshp -x ./assets/cmd/false arg  is 1 ... ok
+sshp -x ./assets/cmd/false -j arg  is 1 ... ok
+sshp -x ./assets/cmd/false -g arg  is 1 ... ok
+sshp -x ./assets/cmd/hello -a arg code  is 0 ... ok
+sshp -x ./assets/cmd/hello -a arg stdout  is hello ... ok
 ```
 
 Style can be checked with `make check`, this does not require the program to be

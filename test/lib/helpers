@@ -15,14 +15,16 @@ rst=$(tput sgr0)
 unset -f tput
 
 #
-# print a message to stderr and exit with failure
+# Print a message to stderr and exit with failure.
+#
 fatal() {
 	echo "$@" >&2
 	exit 1
 }
 
 #
-# sshp wrapper to call the compiled version
+# sshp wrapper to call the compiled version.
+#
 sshp() {
 	"${SSHP:-../sshp}" "$@"
 }
@@ -30,29 +32,58 @@ sshp() {
 #
 # Verify that a command runs and exits with the expected code.
 #
-# Usage: verify <code> <cmd> [args ...]
+# Usage: verify-cmd <code> <cmd> [args ...]
 #
 # Example:
 #
-# verify 0 true
-# verify 5 sh -c 'exit 5'
-verify() {
+# verify-cmd 0 true
+# verify-cmd 5 sh -c 'exit 5'
+#
+verify-cmd() {
 	local code
 	local want=$1
 	local output
 
 	shift
 
-	echo -n "$bld$*$rst  exits $want ... "
 	output=$("$@" 2>&1)
 	code=$?
 
-	if ((code == want)); then
-		echo "${grn}ok$rst"
-	else
-		echo "${red}failed!$rst"
+	if ! _verify-equal "$want" "$code" "$*"; then
 		echo '- program output -'
 		echo "$output"
 		exit 1
 	fi
+}
+
+#
+# Verify that the first 2 arguments are the same.
+#
+# Usage: verify-equal <want> <have> <message>
+#
+verify-equal() {
+	_verify-equal "$@" || exit 1
+}
+
+#
+# Helper function to verify 2 arguments are the same.
+#
+# Usage: same as verify-equal
+#
+_verify-equal() {
+	local want=$1
+	local have=$2
+	local msg=$3
+
+	echo -n "$bld$msg$rst  is $want ... "
+
+	if ((want == have)); then
+		echo "${grn}ok$rst"
+	else
+		echo "${red}failed!$rst"
+		echo "$have != $want"
+		return 1
+	fi
+
+	return 0
 }

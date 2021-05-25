@@ -32,7 +32,7 @@ differing only in how data is buffered from the child processes and printed to
 the screen.  Line mode buffers the data line\-by\-line, whereas group mode does
 no buffering at all and prints the data once it is read from the child.
 .PP
-The last mode however, \fB\fCjoin\fR, buffers \fIall\fP of the data from all of the child
+The last mode, \fB\fCjoin\fR, however, buffers \fIall\fP of the data from all of the child
 processes and outputs once all processes have finished.  Instead of grouping
 the output by host, it is grouped by the output itself to show which hosts had
 the same output.
@@ -76,6 +76,9 @@ Trim hostnames (remove domain) on output, defaults to \fB\fCfalse\fR\&.
 .TP
 \fB\fC\-v\fR, \fB\fC\-\-version\fR
 Print the version number and exit.
+.TP
+\fB\fC\-x\fR, \fB\fC\-\-exec\fR
+Program to execute, defaults to \fB\fCssh\fR\&.
 .TP
 \fB\fC\-\-max\-line\-length\fR \fInum\fP
 Maximum line length (in \fB\fCline mode\fR only), defaults to \fB\fC1024\fR\&.
