@@ -8,6 +8,16 @@ streams of the child line-by-line to stdout of `sshp` itself.
 
 ![sshp-logo](https://www.daveeddy.com/static/media/github/sshp/c/logo.jpg)
 
+- [Installation](#installation)
+- [About](#about)
+- [Examples](#examples)
+- [Tips and Tricks](#tips-and-tricks)
+- [Exit Codes](#exit-codes)
+- [Usage](#usage)
+- [Tests and Style](#tests-and-style)
+- [Comparison to Node.js sshp](#comparison-to-nodejs-sshp)
+- [License](#license)
+
 Installation
 ------------
 
