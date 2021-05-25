@@ -2,7 +2,7 @@
 
 ## not yet released
 
-(nothing yet)
+- Add `-x` / `--exec` option.
 
 ## `v1.0.2`
 
