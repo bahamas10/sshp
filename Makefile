@@ -43,7 +43,7 @@ clean-all: clean clean-man
 # test targets
 .PHONY: test
 test: sshp
-	cd test && ./test hosts.txt
+	cd test && ./runtest test_*
 
 .PHONY: check
 check:

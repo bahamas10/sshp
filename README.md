@@ -180,19 +180,21 @@ sanity.  It can be run with `make test`:
 
 ``` console
 $ make test
-cd test && ./test hosts.txt
+cd test && ./runtest test_*
+running:  ./test_usage
 sshp -v  exits 0 ... ok
 sshp -h  exits 0 ... ok
 sshp  exits 2 ... ok
 sshp -f / cmd  exits 2 ... ok
 sshp -f /should-not-exist cmd  exits 2 ... ok
 sshp -f /dev/null cmd  exits 2 ... ok
+sshp -f ./assets/empty-hosts.txt cmd  exits 2 ... ok
 sshp -m  exits 2 ... ok
 sshp -m 0  exits 2 ... ok
 sshp -m foo  exits 2 ... ok
 sshp -m -17  exits 2 ... ok
 sshp -g -j  exits 2 ... ok
-sshp -n -f hosts.txt cmd  exits 0 ... ok
+sshp -n -f ./assets/simple-hosts.txt cmd  exits 0 ... ok
 sshp -n -f - cmd  exits 0 ... ok
 sshp -n cmd  exits 0 ... ok
 ```

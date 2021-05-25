@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#
+# very simple test for sshp just to verify some basic behavior
+#
+# Author: Dave Eddy <dave@daveeddy.com>
+# Date: April 14, 2021
+# License: MIT
+
+. ./lib/helpers || exit 1
+
+# -v should just exit 0
+verify 0 sshp -v
+
+# -h should just exit 0
+verify 0 sshp -h
+
+# no arguments is a user error
+verify 2 sshp
+
+# bad hosts file
+verify 2 sshp -f / cmd
+verify 2 sshp -f /should-not-exist cmd
+
+# no hosts specified is currently an error
+verify 2 sshp -f /dev/null cmd
+verify 2 sshp -f ./assets/empty-hosts.txt cmd
+
+# invalid max parallelism
+verify 2 sshp -m
+verify 2 sshp -m 0
+verify 2 sshp -m foo
+verify 2 sshp -m -17
+
+# invalid mode combinations
+verify 2 sshp -g -j
+
+# do a dry run
+hostfile='./assets/simple-hosts.txt'
+verify 0 sshp -n -f "$hostfile" cmd
+verify 0 sshp -n -f - cmd < "$hostfile"
+verify 0 sshp -n cmd < "$hostfile"
+
+exit 0
