@@ -6,6 +6,8 @@
 # Date: May 24, 2021
 # License: MIT
 
+SSHP=${SSHP:-../sshp}
+
 # load some colors
 [[ -t 1 ]] || tput() { true; }
 red=$(tput setaf 1)
@@ -26,7 +28,7 @@ fatal() {
 # sshp wrapper to call the compiled version.
 #
 sshp() {
-	"${SSHP:-../sshp}" "$@"
+	"$SSHP" "$@"
 }
 
 #

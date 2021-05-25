@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# Test sshp signals
+#
+# Author: Dave Eddy <dave@daveeddy.com>
+# Date: May 25, 2021
+# License: MIT
+
+. ./lib/helpers || exit 1
+
+singlehost='./assets/hosts/single-host.txt'
+
+# check sigterm
+for sig in TERM INT; do
+	cmd=("$SSHP" -x ./assets/cmd/sleep arg)
+	< "$singlehost" "${cmd[@]}" > /dev/null &
+	pid=$!
+
+	(sleep 0.2; kill "-$sig" "$pid") &
+	wait "$pid"
+
+	code=$?
+
+	verify-equal 4 "$code" "${cmd[*]} $sig code"
+done
+
+exit 0

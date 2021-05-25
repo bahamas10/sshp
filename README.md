@@ -209,6 +209,10 @@ sshp -x ./assets/cmd/false -j arg  is 1 ... ok
 sshp -x ./assets/cmd/false -g arg  is 1 ... ok
 sshp -x ./assets/cmd/hello -a arg code  is 0 ... ok
 sshp -x ./assets/cmd/hello -a arg stdout  is hello ... ok
+
+running:  ./test_20_signals
+../sshp -x ./assets/cmd/sleep arg TERM code  is 4 ... ok
+../sshp -x ./assets/cmd/sleep arg INT code  is 4 ... ok
 ```
 
 Style can be checked with `make check`, this does not require the program to be
