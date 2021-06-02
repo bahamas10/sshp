@@ -143,9 +143,9 @@ Usage
 ``` console
 $ sshp -h
         _
-  _____| |_  _ __     Parallel SSH Executor (v1.0.0)
+  _____| |_  _ __     Parallel SSH Executor (v1.1.0)
  (_-<_-< ' \| '_ \    Source: https://github.com/bahamas10/sshp
- /__/__/_||_| .__/    Compiled: May 20 2021 14:10:50 (using epoll)
+ /__/__/_||_| .__/    Compiled: Jun  2 2021 12:23:56 (using kqueue)
             |_|       MIT License
 
 Parallel ssh with streaming output.
@@ -182,6 +182,7 @@ OPTIONS:
   -s, --silent               Silence all output subprocess stdio, defaults to false.
   -t, --trim                 Trim hostnames (remove domain) on output, defaults to false.
   -v, --version              Print the version number and exit.
+  -x, --exec <prog>          Program to execute, defaults to ssh.
   --max-line-length <num>    Maximum line length (in line mode), defaults to 1024.
   --max-output-length <num>  Maximum output length (in join mode), defaults to 8192.
 
