@@ -113,7 +113,7 @@ the process:
 Tips and Tricks
 ---------------
 
-If one ore more of the hosts you want to ssh into are not in your `known_hosts`
+If one or more of the hosts you want to ssh into are not in your `known_hosts`
 file it can be really overwhelming to get all of the warning messages / prompts
 to save the host key.  You can manually accept any new keys 1-by-1 with:
 
