@@ -2,6 +2,10 @@
 
 ## not yet released
 
+## `v1.1.1`
+
+- Fix crash when receiving multiple signals.
+
 ## `v1.1.0`
 
 - Add `-x` / `--exec` option.
