@@ -1803,6 +1803,7 @@ main(int argc, char **argv)
 	int dev_null_fd;
 	int exit_code = 0;
 	int num_hosts;
+	struct sigaction sig;
 	long delta;
 	long end_time;
 	long start_time;
@@ -1891,16 +1892,19 @@ main(int argc, char **argv)
 	}
 
 	// handle signals and exit
+	sig.sa_handler = signal_handler;
+	sigemptyset(&sig.sa_mask);
+	sig.sa_flags = 0;
 	if (atexit(atexit_handler) != 0) {
 		err(3, "register atexit");
 	}
-	if (signal(SIGUSR1, signal_handler) == SIG_ERR) {
+	if (sigaction(SIGUSR1, &sig, NULL) != 0) {
 		err(3, "register SIGUSR1");
 	}
-	if (signal(SIGTERM, signal_handler) == SIG_ERR) {
+	if (sigaction(SIGTERM, &sig, NULL) != 0) {
 		err(3, "register SIGTERM");
 	}
-	if (signal(SIGINT, signal_handler) == SIG_ERR) {
+	if (sigaction(SIGINT, &sig, NULL) != 0) {
 		err(3, "register SIGINT");
 	}
 
