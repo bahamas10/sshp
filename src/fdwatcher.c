@@ -26,7 +26,7 @@
  * Return event interface type as a string.
  */
 const char *
-fdwatcher_ev_interface()
+fdwatcher_ev_interface(void)
 {
 #if USE_KQUEUE
 	return "kqueue";
@@ -39,7 +39,7 @@ fdwatcher_ev_interface()
  * Create an FdWatcher object.
  */
 FdWatcher *
-fdwatcher_create()
+fdwatcher_create(void)
 {
 	FdWatcher *fdw = malloc(sizeof (FdWatcher));
 

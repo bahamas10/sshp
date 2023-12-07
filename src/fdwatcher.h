@@ -82,7 +82,7 @@ typedef struct fdwatcher {
  * Return the event interface that is being used.  This will return a string
  * like: "epoll" or "kqueue" depending on how it was compiled.
  */
-const char *fdwatcher_ev_interface();
+const char *fdwatcher_ev_interface(void);
 
 /*
  * Create an FdWatcher object.  This object will be passed to the rest of the
@@ -91,7 +91,7 @@ const char *fdwatcher_ev_interface();
  *
  * Returns NULL and sets errno on error.
  */
-FdWatcher *fdwatcher_create();
+FdWatcher *fdwatcher_create(void);
 
 /*
  * Add a file descriptor with the given user data (called `ptr`) to the watch

@@ -546,7 +546,7 @@ prog_mode_to_string(enum ProgMode mode)
  * Print status - called via SIGUSR1 handler.
  */
 static void
-print_status()
+print_status(void)
 {
 	int num_hosts = 0;
 	int cp_ready = 0;
@@ -590,7 +590,7 @@ print_status()
  * Kill all running child processes.
  */
 static void
-kill_running_processes()
+kill_running_processes(void)
 {
 	for (Host *h = hosts; h != NULL; h = h->next) {
 		assert(h->cp != NULL);
@@ -647,7 +647,7 @@ signal_handler(int signum)
  * outstanding when exit is called.
  */
 static void
-atexit_handler()
+atexit_handler(void)
 {
 	kill_running_processes();
 }
@@ -677,7 +677,7 @@ safe_malloc(size_t size, const char *msg)
  * Create a ChildProcess object.
  */
 static ChildProcess *
-child_process_create()
+child_process_create(void)
 {
 	ChildProcess *cp = safe_malloc(sizeof (ChildProcess),
 	    "child_process_create");
@@ -926,7 +926,7 @@ ends_in_newline(const char *s)
  * Get the current monotonic time in ms.
  */
 static long
-monotonic_time_ms()
+monotonic_time_ms(void)
 {
 	struct timespec t;
 
