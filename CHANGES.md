@@ -2,6 +2,11 @@
 
 ## not yet released
 
+## `v1.1.2`
+
+- [PR3](https://github.com/bahamas10/sshp/pull/3) - resolve compilation error on
+    clang 15+
+
 ## `v1.1.1`
 
 - Fix crash when receiving multiple signals.
