@@ -24,7 +24,7 @@ exceeds-line-length() {
 	local file=$1
 	local columns=80
 
-	awk "-vcols=$columns" '
+	expand "$file" | awk "-vcols=$columns" '
 	BEGIN {
 		code = 0;
 	}
@@ -35,7 +35,7 @@ exceeds-line-length() {
 	END {
 		exit(code);
 	}
-	' "$file"
+	'
 }
 
 # check for consecutive newlines
