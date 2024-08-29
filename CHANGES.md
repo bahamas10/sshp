@@ -2,6 +2,11 @@
 
 ## not yet released
 
+## `v1.1.3`
+
+- [Issue 5](https://github.com/bahamas10/sshp/issues/5) - define fdwatcher
+    timeout unit
+
 ## `v1.1.2`
 
 - [PR3](https://github.com/bahamas10/sshp/pull/3) - resolve compilation error on
