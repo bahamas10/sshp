@@ -50,20 +50,18 @@ fdwatcher_create(void)
 #if USE_KQUEUE
 	fdw->kq = kqueue();
 	if (fdw->kq == -1) {
-		goto fail;
+		free(fdw);
+		return NULL;
 	}
 #else
 	fdw->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (fdw->epoll_fd == -1) {
-		goto fail;
+		free(fdw);
+		return NULL;
 	}
 #endif
-
 	return fdw;
 
-fail:
-	free(fdw);
-	return NULL;
 }
 
 /*
