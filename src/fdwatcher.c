@@ -60,6 +60,7 @@ fdwatcher_create(void)
 		return NULL;
 	}
 #endif
+
 	return fdw;
 
 }
