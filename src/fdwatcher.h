@@ -113,8 +113,8 @@ int fdwatcher_remove(FdWatcher *fdw, int fd);
 /*
  * Wait for events and return when one or more are seen.  `events` and
  * `nevents` are an array of pointers (type agnostic) and the number of
- * pointers in the array to fill.  `timeout` is an optional timeout to wait for
- * events, set to -1 to wait indefinitely.
+ * pointers in the array to fill.  `timeout` is an optional timeout (in
+ * milliseconds) to wait for events, set to -1 to wait indefinitely.
  *
  * This function will return the number of events that were seen.  For each
  * event that was seen, its user data pointer (set in `fdwatcher_add`) will be

@@ -129,8 +129,9 @@ fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 	struct timespec *tsp = NULL;
 
 	if (timeout != -1) {
-		ts.tv_sec = timeout;
-		ts.tv_nsec = 0;
+		// timeout is milleseconds, convert to timespec
+		ts.tv_sec = timeout / 1000;
+		ts.tv_nsec = timeout % 1000 * 1000 * 1000;
 		tsp = &ts;
 	}
 
