@@ -79,7 +79,7 @@ _verify-equal() {
 
 	echo -n "$bld$msg$rst  is $want ... "
 
-	if ((want == have)); then
+	if [[ $want == "$have" ]]; then
 		echo "${grn}ok$rst"
 	else
 		echo "${red}failed!$rst"
