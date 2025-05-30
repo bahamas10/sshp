@@ -41,7 +41,9 @@ $ sshp -v
 v1.0.0
 ```
 
-`sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
+If you use Arch Linux, you can instead use the AUR package [sshp](https://aur.archlinux.org/packages/sshp) or [sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
+
+Note: `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
 been tested on Linux, illumos, MacOS, and FreeBSD.
 
 About
