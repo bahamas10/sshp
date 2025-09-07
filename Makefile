@@ -52,6 +52,8 @@ check:
 # install/uninstall targets
 .PHONY: install
 install: sshp
+	mkdir -p $(PREFIX)/bin
+	mkdir -p $(PREFIX)/man/man1
 	cp man/sshp.1 $(PREFIX)/man/man1
 	cp sshp $(PREFIX)/bin
 
