@@ -2,6 +2,11 @@
 
 ## not yet released
 
+## `v1.1.4`
+
+- [PR16](https://github.com/bahamas10/sshp/pull/16) - support hostnames
+    without a trailing newline
+
 ## `v1.1.3`
 
 - [Issue 5](https://github.com/bahamas10/sshp/issues/5) - define fdwatcher
