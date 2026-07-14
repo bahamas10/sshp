@@ -1635,10 +1635,11 @@ parse_hosts(FILE *f)
 		}
 
 		/*
-		 * remove the ending newline - if a newline is not present the
-		 * line is too long
+		 * remove the ending newline - the final line may end at EOF
+		 * without a newline; otherwise, a missing newline means the line
+		 * did not fit in the buffer.
 		 */
-		if (!lsplit_str(hostname, '\n')) {
+		if (!lsplit_str(hostname, '\n') && !feof(f)) {
 			errx(2, "hosts file line %d too long (>= %d chars)\n%s",
 			    lineno, _POSIX_HOST_NAME_MAX, hostname);
 		}

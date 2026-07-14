@@ -40,6 +40,9 @@ verify-cmd 0 sshp -n -f "$hostfile" cmd
 verify-cmd 0 sshp -n -f - cmd < "$hostfile"
 verify-cmd 0 sshp -n cmd < "$hostfile"
 
+# the final host does not require a trailing newline
+verify-cmd 0 bash -c "printf host-without-newline | '$SSHP' -n cmd"
+
 # check host names lengths
 verify-cmd 0 sshp -n -f ./assets/hosts/long-hosts-good.txt cmd
 verify-cmd 2 sshp -n -f ./assets/hosts/long-hosts-bad.txt cmd
