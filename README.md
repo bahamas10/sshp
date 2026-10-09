@@ -26,19 +26,21 @@ Pull the source code and run `make` to compile `sshp`:
 ``` console
 $ make
 cc -o src/fdwatcher.o -c -D USE_KQUEUE=0 -Wall -Werror -Wextra -Wpedantic -O2 src/fdwatcher.c
-cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/sshp.c src/fdwatcher.o
+cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/main.c src/fdwatcher.o
 $ ./sshp -v
-v1.0.0
+v1.1.4
 ```
 
 Then optionally run `make install` to install `sshp`:
 
 ``` console
 $ sudo make install
+mkdir -p /usr/local/bin
+mkdir -p /usr/local/man/man1
 cp man/sshp.1 /usr/local/man/man1
 cp sshp /usr/local/bin
 $ sshp -v
-v1.0.0
+v1.1.4
 ```
 
 If you use Arch Linux, you can instead use the AUR package
@@ -46,7 +48,7 @@ If you use Arch Linux, you can instead use the AUR package
 [sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
 
 Note: `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
-been tested on Linux, illumos, MacOS, and FreeBSD.
+been tested on Linux, illumos, macOS, and FreeBSD.
 
 About
 -----
@@ -63,9 +65,9 @@ the screen.  Line mode buffers the data line-by-line, whereas group mode does
 no buffering at all and prints the data once it is read from the child.
 
 The last mode, `join`, however, buffers *all* of the data from all of the child
-processes and outputs once all processes have finished.  Instead of grouping
-the output by host, it is grouped by the output itself to show which hosts had
-the same output.
+processes and produces output once all processes have finished.  Instead of
+grouping the output by host, it is grouped by the output itself to show which
+hosts had the same output.
 
 Examples
 --------
@@ -80,7 +82,7 @@ cifs.rapture.com
 decomp.rapture.com
 ```
 
-Parallel ssh into hosts supplied by a file running `uname -v`:
+Run `uname -v` in parallel on hosts supplied by a file:
 
 ![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png)
 
@@ -108,7 +110,7 @@ hostname:
 
 ![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.png)
 
-Send the `sshp` process a `SIGSUR1` signal to print out process status
+Send the `sshp` process a `SIGUSR1` signal to print out process status
 information while it is running.  In this example, a signal was sent twice to
 the process:
 
@@ -118,13 +120,17 @@ Tips and Tricks
 ---------------
 
 If one or more of the hosts you want to ssh into are not in your `known_hosts`
-file it can be really overwhelming to get all of the warning messages / prompts
-to save the host key.  You can manually accept any new keys 1-by-1 with:
+file, it can be really overwhelming to get all of the warnings and prompts to
+save the host key.  You can manually accept any new keys one by one with:
 
     sshp -f hosts.txt -m 1 true
 
-Or, accept all keys without any confirmation or validation (use at your own
-risk):
+Or, automatically accept new keys while still rejecting changed keys:
+
+    sshp -f hosts.txt -o StrictHostKeyChecking=accept-new true
+
+To accept new or changed keys without any confirmation or validation (use at
+your own risk):
 
     sshp -f hosts.txt -o StrictHostKeyChecking=no true
 
@@ -135,21 +141,24 @@ Exit Codes
 - `1` Everything worked, but 1 or more children exited with a non-zero code.
 - `2` Incorrect usage - the user supplied something incorrect preventing `sshp`
   from being able to run (unknown options, invalid host file, etc.).
-- `3` Program failure - the program experienced some failing in the system
+- `3` Program failure - the program encountered a system failure
   preventing `sshp` from being able to run (`malloc` failure, `epoll` failure,
   etc.).
-- `4` `sshp` killed by `SIGTERM` or `SIGINT`.
+- `4` `sshp` exited after receiving `SIGTERM` or `SIGINT`.
 - `*` Anything else - probably a blown assertion.
 
 Usage
 -----
 
+The version, compilation time, and event backend shown here reflect the build
+used to capture this output.
+
 ``` console
 $ sshp -h
         _
-  _____| |_  _ __     Parallel SSH Executor (v1.1.0)
+  _____| |_  _ __     Parallel SSH Executor (v1.1.4)
  (_-<_-< ' \| '_ \    Source: https://github.com/bahamas10/sshp
- /__/__/_||_| .__/    Compiled: Jun  2 2021 12:23:56 (using kqueue)
+ /__/__/_||_| .__/    Compiled: Oct  9 2026 00:54:42 (using kqueue)
             |_|       MIT License
 
 Parallel ssh with streaming output.
@@ -226,6 +235,7 @@ sshp -g -j  is 2 ... ok
 sshp -n -f ./assets/hosts/simple-hosts.txt cmd  is 0 ... ok
 sshp -n -f - cmd  is 0 ... ok
 sshp -n cmd  is 0 ... ok
+bash -c printf host-without-newline | '../sshp' -n cmd  is 0 ... ok
 sshp -n -f ./assets/hosts/long-hosts-good.txt cmd  is 0 ... ok
 sshp -n -f ./assets/hosts/long-hosts-bad.txt cmd  is 2 ... ok
 
@@ -240,6 +250,8 @@ sshp -x ./assets/cmd/hello -a arg code  is 0 ... ok
 sshp -x ./assets/cmd/hello -a arg stdout  is hello ... ok
 
 running:  ./test_20_signals
+../sshp -x ./assets/cmd/sleep arg USR1 then TERM code  is 4 ... ok
+grep -q ^status: 1 running, 0 finished ./tmp/output.<pid>  is 0 ... ok
 ../sshp -x ./assets/cmd/sleep arg TERM code  is 4 ... ok
 ../sshp -x ./assets/cmd/sleep arg INT code  is 4 ... ok
 ```
@@ -249,13 +261,17 @@ compiled:
 
 ``` console
 $ make check
-./test/check src/*.h src/*.c test/* man/*.md
+./tools/check src/*.h src/*.c test/* man/*.md
 checking:  src/fdwatcher.h
 checking:  src/fdwatcher.c
-checking:  src/sshp.c
-checking:  test/check
-checking:  test/hosts.txt
-checking:  test/test
+checking:  src/main.c
+checking:  test/README.md
+checking:  test/assets
+checking:  test/lib
+checking:  test/runtest
+checking:  test/test_00_usage
+checking:  test/test_10_exec
+checking:  test/test_20_signals
 checking:  man/sshp.md
 ```
 
