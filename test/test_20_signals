@@ -8,9 +8,46 @@
 
 . ./lib/helpers || exit 1
 
+mkdir -p tmp
+tmp=./tmp/output.$$
+
+cleanup() {
+	rm -f "$tmp"
+}
+
 singlehost='./assets/hosts/single-host.txt'
 
-# check sigterm
+# check sigusr1
+
+trap cleanup EXIT
+
+cmd=("$SSHP" -x ./assets/cmd/sleep arg)
+< "$singlehost" "${cmd[@]}" > "$tmp" &
+pid=$!
+
+# send signal to process
+sleep 0.2
+kill -USR1 "$pid"
+
+# move on early if we see the output - we still move on regardless just slower
+for _ in {1..40}; do
+	grep -q '^status: 1 running, 0 finished' "$tmp" && break
+	sleep 0.05
+done
+
+# the process should still be running at this point (USR1 is not fatal)
+kill -0 "$pid" || fatal "${cmd[*]} exited after SIGUSR1"
+
+# actually kill the process now
+kill -TERM "$pid"
+wait "$pid"
+code=$?
+
+# ensure things look good
+verify-equal 4 "$code" "${cmd[*]} USR1 then TERM code"
+verify-cmd 0 grep -q '^status: 1 running, 0 finished' "$tmp"
+
+# check fatal signals
 for sig in TERM INT; do
 	cmd=("$SSHP" -x ./assets/cmd/sleep arg)
 	< "$singlehost" "${cmd[@]}" > /dev/null &

@@ -219,7 +219,7 @@
 
 // FdWatcher options
 #define FDW_MAX_EVENTS		50
-#define FDW_WAIT_TIMEOUT	-1
+#define FDW_WAIT_TIMEOUT	100
 
 // maximum number of arguments for a child process
 #define MAX_ARGS	256
@@ -329,6 +329,10 @@ static char *base_ssh_command[MAX_ARGS] = {NULL};
 
 // FdWatcher instance
 static FdWatcher *fdw = NULL;
+
+// Signals waiting to be handled by the main loop
+static volatile sig_atomic_t status_requested = 0;
+static volatile sig_atomic_t terminate_requested = 0;
 
 // If a newline was printed (used for group mode only)
 static bool newline_printed = true;
@@ -543,7 +547,7 @@ prog_mode_to_string(enum ProgMode mode)
 }
 
 /*
- * Print status - called via SIGUSR1 handler.
+ * Print status after SIGUSR1 is observed by the main loop.
  */
 static void
 print_status(void)
@@ -629,17 +633,61 @@ signal_to_str(int signum)
 static void
 signal_handler(int signum)
 {
-	printf("\n%s%s%s received\n",
-	    colors.yellow, signal_to_str(signum), colors.reset);
-
 	switch (signum) {
-	case SIGUSR1: print_status(); break;
-	case SIGINT: exit(4);
-	case SIGTERM: exit(4);
-	default: errx(3, "unknown signal handled: %d", signum);
+	case SIGUSR1:
+		status_requested = 1;
+		break;
+	case SIGINT:
+	case SIGTERM:
+		terminate_requested = signum;
+		break;
+	default:
+		break;
+	}
+}
+
+/*
+ * Process pending signals.
+ */
+static void
+handle_pending_signals(void)
+{
+	// check for terminate signal first
+	int sig = terminate_requested;
+	if (sig != 0) {
+		printf("\n%s%s%s received\n", colors.yellow,
+		    signal_to_str(sig), colors.reset);
+		exit(4);
 	}
 
-	printf("\n");
+	// check for status signal next
+	if (status_requested != 0) {
+		status_requested = 0;
+		printf("\n%sSIGUSR1%s received\n",
+		    colors.yellow, colors.reset);
+		print_status();
+		printf("\n");
+		fflush(stdout);
+	}
+}
+
+/*
+ * Reset signal handlers to ensure child processes do not inherit the parent's
+ * handlers.
+ */
+static void
+reset_signal_handlers(void)
+{
+	struct sigaction sig;
+
+	sig.sa_handler = SIG_DFL;
+	sigemptyset(&sig.sa_mask);
+	sig.sa_flags = 0;
+	if (sigaction(SIGUSR1, &sig, NULL) == -1 ||
+	    sigaction(SIGTERM, &sig, NULL) == -1 ||
+	    sigaction(SIGINT, &sig, NULL) == -1) {
+		err(3, "reset signal handlers");
+	}
 }
 
 /*
@@ -1035,6 +1083,9 @@ spawn_child_process(Host *host)
 	if (pid == 0) {
 		int *err_fd;
 		int *out_fd;
+
+		reset_signal_handlers();
+
 		switch (opts.mode) {
 		case MODE_JOIN:
 			out_fd = stdio_fd;
@@ -1552,6 +1603,7 @@ main_loop(int num_hosts)
 
 	// loop while there are still child processes
 	while (cur_host != NULL || outstanding > 0) {
+		handle_pending_signals();
 		assert(outstanding <= opts.max_jobs);
 
 		int num_events;
@@ -1606,6 +1658,8 @@ main_loop(int num_hosts)
 			}
 		}
 	}
+
+	handle_pending_signals();
 }
 
 /*
@@ -1895,7 +1949,7 @@ main(int argc, char **argv)
 	// handle signals and exit
 	sig.sa_handler = signal_handler;
 	sigemptyset(&sig.sa_mask);
-	sig.sa_flags = 0;
+	sig.sa_flags = SA_RESTART;
 	if (atexit(atexit_handler) != 0) {
 		err(3, "register atexit");
 	}
