@@ -47,7 +47,7 @@ test: sshp
 
 .PHONY: check
 check:
-	./tools/check src/*.h src/*.c test/* man/*.md
+	./tools/check src/*.h src/*.c test/* test/assets/cmd/* man/*.md
 
 # install/uninstall targets
 .PHONY: install

@@ -8,6 +8,13 @@
 
 . ./lib/helpers || exit 1
 
+mkdir -p tmp
+tmp=./tmp/output.$$
+
+cleanup() {
+	rm -f "$tmp"
+}
+
 singlehost='./assets/hosts/single-host.txt'
 
 # check all 3 modes, a good command should yield an exit code of 0
@@ -27,5 +34,14 @@ code=$?
 
 verify-equal 0 "$code" "${cmd[*]} code"
 verify-equal 'hello' "$output" "${cmd[*]} stdout"
+
+# ensure output larger than a pipe buffer is not truncated
+cmd=(sshp -x ./assets/cmd/large-output -a arg)
+"${cmd[@]}" < "$singlehost" > "$tmp"
+code=$?
+lines=$(awk 'END { print NR }' "$tmp")
+
+verify-equal 0 "$code" "${cmd[*]} code"
+verify-equal 200000 "$lines" "${cmd[*]} output lines"
 
 exit 0

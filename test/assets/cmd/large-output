@@ -1,0 +1,7 @@
+#!/usr/bin/awk -f
+
+BEGIN {
+	for (i = 0; i < 200000; i++) {
+		print i
+	}
+}
