@@ -2,6 +2,8 @@
 
 ## not yet released
 
+- Safer signal handling in the main thread
+
 ## `v1.1.4`
 
 - [PR16](https://github.com/bahamas10/sshp/pull/16) - support hostnames
