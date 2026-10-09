@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Test host destination parsing and validation.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 09, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+# ex: verify-input <code> <conf-text> <msg>
+# note: a newline will be appended to the conf data
+verify-input() {
+	local want=$1
+	local input=$2
+	local msg=$3
+	local code
+
+	sshp -n cmd <<< "$input" &>/dev/null
+	code=$?
+
+	verify-equal "$want" "$code" "$msg"
+}
+
+# first ensure valid hosts are success
+verify-cmd 0 sshp -n -f ./assets/hosts/valid-destinations.txt cmd
+
+# blank lines and comments get ignored
+verify-input 0 $'\t# comment\n\t\nhost' 'comments and blank lines'
+
+# CRLF input should have its carriage return stripped
+verify-input 0 $'host\r\n'   'CRLF input'
+
+# generic bad inputs
+verify-input 2 ''            'empty name'
+verify-input 2 '  '          'spaces only'
+verify-input 2 '-V'          'leading dash'
+verify-input 2 '  -V'        'leading space then dash'
+verify-input 2 ' host'       'leading space'
+verify-input 2 'host '       'trailing space'
+verify-input 2 'host name'   'embedded space'
+verify-input 2 $'host\tname' 'embedded tab'
+verify-input 2 $'host\ename' 'embedded control character'
+
+exit 0
