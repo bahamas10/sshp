@@ -41,7 +41,9 @@ $ sshp -v
 v1.0.0
 ```
 
-If you use Arch Linux, you can instead use the AUR package [sshp](https://aur.archlinux.org/packages/sshp) or [sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
+If you use Arch Linux, you can instead use the AUR package
+[sshp](https://aur.archlinux.org/packages/sshp) or
+[sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
 
 Note: `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
 been tested on Linux, illumos, MacOS, and FreeBSD.
@@ -80,37 +82,37 @@ decomp.rapture.com
 
 Parallel ssh into hosts supplied by a file running `uname -v`:
 
-![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.jpg)
+![line-by-line](https://www.daveeddy.com/static/media/github/sshp/c/line-by-line.png)
 
 Pass in `-e` to get the exit codes of the commands on the remote end.  The
 local exit code will be 0 if all ssh processes exit successfully, or 1 if any
 of the ssh processes exit with a failure:
 
-![exit-codes](https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.jpg)
+![exit-codes](https://www.daveeddy.com/static/media/github/sshp/c/exit-codes.png)
 
 Also note that the hosts file can be passed in via stdin if `-f` is not
 supplied.
 
 Run with `-d` to get debug information making it clear what `sshp` is doing:
 
-![debug-id](https://www.daveeddy.com/static/media/github/sshp/c/debug-id.jpg)
+![debug-id](https://www.daveeddy.com/static/media/github/sshp/c/debug-id.png)
 
 Run with `-g` (`group mode`) to group the output by hostname as it comes in.
 To illustrate this, `-m` is set to 1 to limit the maximum number of concurrent
 child processes to 1, effectively turning `sshp` into an `ssh` serializer:
 
-![serialize-group](https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.jpg)
+![serialize-group](https://www.daveeddy.com/static/media/github/sshp/c/serialize-group-mode.png)
 
 Run with `-j` (`join mode`) to join the output by the output itself and not the
 hostname:
 
-![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.jpg)
+![join-mode](https://www.daveeddy.com/static/media/github/sshp/c/join-mode.png)
 
 Send the `sshp` process a `SIGSUR1` signal to print out process status
 information while it is running.  In this example, a signal was sent twice to
 the process:
 
-![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.jpg)
+![sigusr1-status](https://www.daveeddy.com/static/media/github/sshp/c/sigusr1-status.png)
 
 Tips and Tricks
 ---------------
