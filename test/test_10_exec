@@ -14,6 +14,7 @@ tmp=./tmp/output.$$
 cleanup() {
 	rm -f "$tmp"
 }
+trap cleanup EXIT
 
 singlehost='./assets/hosts/single-host.txt'
 
@@ -44,5 +45,14 @@ lines=$(awk 'END { print NR }' "$tmp")
 
 verify-equal 0 "$code" "${cmd[*]} code"
 verify-equal 200000 "$lines" "${cmd[*]} output lines"
+
+# a child killed by a signal should be an exit code of 1
+# https://github.com/bahamas10/sshp/issues/19
+cmd=(sshp -x ./assets/cmd/sigterm -e arg)
+"${cmd[@]}" < "$singlehost" > "$tmp"
+code=$?
+
+verify-equal 1 "$code" "${cmd[*]} code"
+verify-cmd 0 grep -q 'exited: 143 ' "$tmp"
 
 exit 0

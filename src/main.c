@@ -1190,10 +1190,18 @@ wait_for_child(Host *host)
 	}
 
 	// set the host as closed
-	cp->exit_code = WEXITSTATUS(status);
 	cp->pid = -2;
 	cp->finished_time = monotonic_time_ms();
 	cp->state = CP_STATE_DONE;
+
+	// capture exit codes and use the shell convention for signals
+	if (WIFEXITED(status)) {
+		cp->exit_code = WEXITSTATUS(status);
+	} else if (WIFSIGNALED(status)) {
+		cp->exit_code = 128 + WTERMSIG(status);
+	} else {
+		errx(3, "unexpected wait status for pid %d: %d", pid, status);
+	}
 
 	// print the exit message
 	if (opts.exit_codes || opts.debug) {
