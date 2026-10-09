@@ -193,6 +193,7 @@
  */
 
 #include <assert.h>
+#include <ctype.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -954,6 +955,55 @@ lsplit_str(char *s, char c)
 }
 
 /*
+ * Return whether a hosts-file line is blank or a comment.  Leading whitespace
+ * is allowed for these lines, but not for actual hostnames.
+ */
+static bool
+host_line_ignored(const char *line)
+{
+	assert(line != NULL);
+	const unsigned char *p = (const unsigned char *)line;
+
+	while (*p != '\0' && isspace(*p)) {
+		p++;
+	}
+
+	return *p == '\0' || *p == '#';
+}
+
+/*
+ * Very minimally validate an ssh destination.  `ssh` allows many different
+ * forms so we don't implement our own full-blown validator, but instead just
+ * block simple things that are clearly wrong, which currently are:
+ *
+ * - an empty name
+ * - a name that stars with `-` (it'll be read by `ssh` as an argument)
+ * - a name that contains a space or a control character
+ */
+static void
+validate_hostname(const char *hostname, int lineno)
+{
+	assert(hostname != NULL);
+	const unsigned char *p = (const unsigned char *)hostname;
+
+	if (hostname[0] == '\0') {
+		errx(2, "hosts file line %d: hostname cannot be empty", lineno);
+	}
+
+	if (hostname[0] == '-') {
+		errx(2, "hosts file line %d: hostname cannot start with '-'",
+		    lineno);
+	}
+
+	for (; *p != '\0'; p++) {
+		if (isspace(*p) || iscntrl(*p)) {
+			errx(2, "hosts file line %d: hostname contains "
+			    "whitespace or control characters", lineno);
+		}
+	}
+}
+
+/*
  * Given a null terminated stream return whether it ends in a newline
  * character.
  */
@@ -1686,16 +1736,7 @@ parse_hosts(FILE *f)
 
 	while (fgets(hostname, _POSIX_HOST_NAME_MAX, f) != NULL) {
 		Host *host;
-		char prefix = hostname[0];
-
-		// skip comments and blank lines
-		switch (prefix) {
-		case '#':
-		case ' ':
-		case '\n':
-		case '\0':
-			goto next;
-		}
+		size_t len;
 
 		/*
 		 * remove the ending newline - the final line may end at EOF
@@ -1706,6 +1747,19 @@ parse_hosts(FILE *f)
 			errx(2, "hosts file line %d too long (>= %d chars)\n%s",
 			    lineno, _POSIX_HOST_NAME_MAX, hostname);
 		}
+
+		// strip the carriage return from CRLF input
+		len = strlen(hostname);
+		if (len > 0 && hostname[len - 1] == '\r') {
+			hostname[len - 1] = '\0';
+		}
+
+		// skip comments and blank lines
+		if (host_line_ignored(hostname)) {
+			goto next;
+		}
+
+		validate_hostname(hostname, lineno);
 
 		// create Host
 		host = host_create(hostname);

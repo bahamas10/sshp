@@ -1,0 +1,18 @@
+# DNS name
+foo.hostname.example.com
+
+# IPv4 address
+192.168.1.1
+
+# User and host
+dave@foo
+
+# IPv6 forms
+[2001:db8::2001:db8::11]
+dave@[2001:db8::1]
+
+# SSH URI
+ssh://dave@foo:2222
+
+# Alias or simple name
+some-alias
