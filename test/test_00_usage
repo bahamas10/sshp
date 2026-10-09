@@ -41,6 +41,7 @@ verify-cmd 0 sshp -n -f - cmd < "$hostfile"
 verify-cmd 0 sshp -n cmd < "$hostfile"
 
 # the final host does not require a trailing newline
+# https://github.com/bahamas10/sshp/issues/15
 verify-cmd 0 bash -c "printf host-without-newline | '$SSHP' -n cmd"
 
 # check host names lengths

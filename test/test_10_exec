@@ -36,6 +36,7 @@ verify-equal 0 "$code" "${cmd[*]} code"
 verify-equal 'hello' "$output" "${cmd[*]} stdout"
 
 # ensure output larger than a pipe buffer is not truncated
+# https://github.com/bahamas10/sshp/issues/17
 cmd=(sshp -x ./assets/cmd/large-output -a arg)
 "${cmd[@]}" < "$singlehost" > "$tmp"
 code=$?
