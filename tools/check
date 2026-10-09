@@ -113,7 +113,7 @@ for f in "$@"; do
 
 	# markdown files get a pass from tab/space checks - they are wild
 	if [[ $ext != md ]]; then
-		run-test consistent-tabs     "$f" 'bad tab usage'
+		run-test consistent-tabs "$f" 'bad tab usage'
 	fi
 done
 

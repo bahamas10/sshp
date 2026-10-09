@@ -13,7 +13,7 @@ else
 endif
 
 # build targets
-sshp: src/sshp.c src/fdwatcher.o
+sshp: src/main.c src/fdwatcher.o
 	$(CC) -o $@ $(CFLAGS) $^
 
 src/fdwatcher.o: src/fdwatcher.c src/fdwatcher.h
