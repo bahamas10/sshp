@@ -884,7 +884,11 @@ fdev_destroy(FdEvent *fdev)
 }
 
 /*
- * Create a pipe with both ends set to non-blocking and cloexec.
+ * Create a pipe with its read end set to non-blocking and both ends set to
+ * cloexec.
+ *
+ * The write end remains blocking because it will become the child process's
+ * stdout or stderr.
  */
 static void
 make_pipe(int *fd)
@@ -896,9 +900,6 @@ make_pipe(int *fd)
 	}
 	if (fcntl(fd[PIPE_READ_END], F_SETFL, O_NONBLOCK) == -1) {
 		err(3, "set read end nonblocking");
-	}
-	if (fcntl(fd[PIPE_WRITE_END], F_SETFL, O_NONBLOCK) == -1) {
-		err(3, "set write end nonblocking");
 	}
 	if (fcntl(fd[PIPE_READ_END], F_SETFD, FD_CLOEXEC) == -1) {
 		err(3, "set read end cloexec");

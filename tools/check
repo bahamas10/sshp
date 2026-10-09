@@ -104,6 +104,8 @@ run-test() {
 
 # loop each argument and run tests
 for f in "$@"; do
+	[[ -d $f ]] && continue
+
 	ext=${f##*.}
 
 	echo "${bld}checking:$rst  $f"
