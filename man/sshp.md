@@ -1,5 +1,5 @@
-SSHP 1 "2021" "General Commands Manual"
-=======================================
+SSHP 1 "October 9, 2026" "General Commands Manual"
+==================================================
 
 NAME
 ----
@@ -9,38 +9,40 @@ NAME
 SYNOPSIS
 --------
 
-`sshp [OPTIONS] <command> [args] ...`
+`sshp [OPTIONS] <command> [arg ...]`
 
-`sshp [-f <hosts.txt>] [-j | -g] <command>`
+`sshp [-f hosts.txt] [-g | -j] <command> [arg ...]`
 
 DESCRIPTION
 -----------
 
 Parallel SSH executor and manager.
 
-`sshp` manages multiple ssh processes and handles coalescing the output to the
-terminal.  By default, `sshp` will read a file of newline-separated hostnames
-or IPs and fork ssh subprocesses for them, redirecting the stdout and stderr
-streams of the child line-by-line to stdout of `sshp` itself.
+`sshp` manages multiple ssh processes and handles coalescing their output to
+the terminal.  It reads newline-separated hostnames or IP addresses from
+standard input or a file specified with `-f`, then starts an ssh subprocess
+for each host.  Child stdout and stderr are written to `sshp`'s standard
+output.
 
 MODES
 -----
 
-`sshp` has 3 modes of execution:
+`sshp` has three modes of execution:
 
 - `line mode` (line-by-line output, default).
 - `group mode` (grouped by hostname output, `-g`).
 - `join mode` (grouped by unique output, `-j`).
 
-The first 2 modes, `line` and `group`, operate in largely the same way,
-differing only in how data is buffered from the child processes and printed to
-the screen.  Line mode buffers the data line-by-line, whereas group mode does
-no buffering at all and prints the data once it is read from the child.
+The first two modes, `line` and `group`, operate in largely the same
+way.  They differ only in how data is buffered from the child processes and
+printed to the screen.  Line mode buffers the data line-by-line, whereas group
+mode does no buffering at all and prints the data once it is read from the
+child.
 
-The last mode, `join`, however, buffers *all* of the data from all of the child
-processes and outputs once all processes have finished.  Instead of grouping
-the output by host, it is grouped by the output itself to show which hosts had
-the same output.
+The last mode, `join`, however, buffers *all* data from all child
+processes and produces output once every process has finished.  Instead of
+grouping the output by host, it groups identical output and lists the hosts
+that produced it.
 
 OPTIONS
 --------
@@ -67,7 +69,8 @@ OPTIONS
   Print this message and exit.
 
 `-j`, `--join`
-  Join hosts together by output (`join mode`).
+  Join hosts together by output (`join mode`).  This option is mutually
+  exclusive with `-a`, `-g`, and `-s`.
 
 `-m`, `--max-jobs` *num*
   Max processes to run concurrently, defaults to `50`.
@@ -84,7 +87,7 @@ OPTIONS
 `-v`, `--version`
   Print the version number and exit.
 
-`-x`, `--exec`
+`-x`, `--exec` *prog*
   Program to execute, defaults to `ssh`.
 
 `--max-line-length` *num*
@@ -93,8 +96,10 @@ OPTIONS
 `--max-output-length` *num*
   Maximum output length (in `join mode` only), defaults to `8192`.
 
-SSH OPTIONS: (passed directly to ssh)
--------------------------------------
+SSH OPTIONS
+-----------
+
+The following options are passed directly to `ssh`:
 
 `-i`, `--identity` *ident*
   ssh identity file to use.
@@ -125,25 +130,50 @@ decomp.rapture.com
 
 `sshp -f hosts.txt uname -v`
 
-  Parallel ssh into hosts supplied by a file running `uname -v`.
+  Run `uname -v` in parallel on hosts supplied by a file.
 
-`cat hosts.txt | sshp -e exit 0`
+`sshp -e exit 0 < hosts.txt`
 
   Parallel ssh into hosts (via `stdin`) and print the exit codes (`-e`).
 
 `sshp -d id -un < hosts.txt`
 
-  Parallel ssh into hosts and run `id -un` with debug (`-d`) output enabled.
+  Parallel ssh into hosts and run `id -un` with debug (`-d`) output
+  enabled.
 
 `sshp -f hosts.txt -m 1 -g command-to-run`
 
-  Run with `-g` (`group mode`) to group the output by hostname as it comes in.
-  Setting `-m` to `1` effectively turns `sshp` into an `ssh` serializer.
+  Run with `-g` (`group mode`) to group the output by hostname as it
+  comes in.  Setting `-m` to `1` effectively turns `sshp` into an
+  `ssh` serializer.
 
 `sshp -f hosts.txt -j hostname`
 
-  Run with `-j` (`join mode`) to join the output by the output itself and not
-  the hostname.
+  Run with `-j` (`join mode`) to group hosts that produce identical
+  output.
+
+EXIT STATUS
+-----------
+
+`0`
+
+  All child processes exited successfully.
+
+`1`
+
+  One or more child processes exited with a non-zero status.
+
+`2`
+
+  Incorrect usage, such as an unknown option or invalid hosts file.
+
+`3`
+
+  A system or internal program failure prevented `sshp` from running.
+
+`4`
+
+  `sshp` exited after receiving `SIGTERM` or `SIGINT`.
 
 SIGNALS
 -------
@@ -152,20 +182,26 @@ SIGNALS
 
   Send a `SIGUSR1` signal to `sshp` to print a status message to stdout.
 
+`SIGINT`, `SIGTERM`
+
+  Terminate running child processes and exit with status `4`.
+
 BUGS
 ----
 
-https://github.com/bahamas10/sshp
+https://github.com/bahamas10/sshp/issues
 
 AUTHOR
 ------
 
-`Dave Eddy <bahamas10> <dave@daveeddy.com> (https://www.daveeddy.com)`
+Dave Eddy (`bahamas10`) <dave@daveeddy.com> (https://www.daveeddy.com)
 
 SEE ALSO
 --------
 
 ssh(1)
+
+ssh_config(5)
 
 LICENSE
 -------
