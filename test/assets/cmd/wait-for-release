@@ -1,0 +1,7 @@
+#!/bin/sh
+
+host=$1
+state=$2
+
+: > "$state/started-$host"
+IFS= read -r _ < "$state/release-$host"
