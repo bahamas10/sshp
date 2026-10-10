@@ -656,10 +656,10 @@ signal_handler(int signum)
  * see: https://github.com/bahamas10/sshp/issues/25
  */
 static void
-child_err(const char *msg)
+child_err(int code, const char *msg)
 {
 	warn("%s", msg);
-	_exit(3);
+	_exit(code);
 }
 
 /*
@@ -702,7 +702,7 @@ reset_signal_handlers(void)
 	if (sigaction(SIGUSR1, &sig, NULL) == -1 ||
 	    sigaction(SIGTERM, &sig, NULL) == -1 ||
 	    sigaction(SIGINT, &sig, NULL) == -1) {
-		child_err("reset signal handlers");
+		child_err(3, "reset signal handlers");
 	}
 }
 
@@ -1175,7 +1175,7 @@ spawn_child_process(Host *host)
 
 		reset_signal_handlers();
 		if (sigprocmask(SIG_SETMASK, &old_signal_mask, NULL) == -1) {
-			child_err("restore signal mask");
+			child_err(3, "restore signal mask");
 		}
 
 		switch (opts.mode) {
@@ -1190,14 +1190,14 @@ spawn_child_process(Host *host)
 		}
 
 		if (dup2(out_fd[PIPE_WRITE_END], STDOUT_FILENO) == -1) {
-			child_err("dup2 stdout");
+			child_err(3, "dup2 stdout");
 		}
 		if (dup2(err_fd[PIPE_WRITE_END], STDERR_FILENO) == -1) {
-			child_err("dup2 stderr");
+			child_err(3, "dup2 stderr");
 		}
 
 		execvp(command[0], command);
-		child_err("exec");
+		child_err(3, "exec");
 	}
 
 	// in parent
