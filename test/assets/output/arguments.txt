@@ -1,0 +1,17 @@
+1: <-o>
+2: <BatchMode=yes>
+3: <-o>
+4: <RequestTTY=no value>
+5: <-q>
+6: <-i>
+7: </path/to/identity file>
+8: <-l>
+9: <remote-user>
+10: <-p>
+11: <2222>
+12: <dave@host.example.com>
+13: <remote-command>
+14: <--remote-option>
+15: <-x>
+16: <>
+17: <argument with spaces>

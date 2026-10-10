@@ -1,0 +1,7 @@
+#!/bin/sh
+
+idx=1
+for arg; do
+	printf '%d: <%s>\n' "$idx" "$arg"
+	idx=$((idx + 1))
+done

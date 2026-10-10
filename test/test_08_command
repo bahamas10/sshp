@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#
+# Test `ssh` command construction and argument forwarding.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 10, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+hostfile=./assets/hosts/argument-host.txt
+
+# verify arguments passed to `sshp` are correctly parsed and given to the child
+verify-sshp-output 0 "$hostfile" ./assets/output/arguments.txt \
+    -a -x ./assets/cmd/print-arguments \
+    -q -i '/path/to/identity file' -l remote-user \
+    -o BatchMode=yes -p 2222 -o 'RequestTTY=no value' \
+    remote-command --remote-option -x '' 'argument with spaces'
+
+# run `sshp` with a bunch of fake arguments to give the child - MAX_ARGS is 256
+# but some of that is used by the `ssh` binary itself and the remote host
+verify-remote-argument-count() {
+	local want=$1
+	local count=$2
+
+	local args=()
+	local code i
+
+	for ((i = 1; i <= count; i++)); do
+		args+=("argument-$i")
+	done
+
+	sshp -s -x ./assets/cmd/true "${args[@]}" < "$hostfile" >/dev/null 2>&1
+	code=$?
+
+	verify-equal "$want" "$code" "$count remote arguments code"
+}
+
+# like above, but using `-o arg` so this will hold roughly half.
+verify-option-count() {
+	local want=$1
+	local count=$2
+
+	local args=()
+	local code i
+
+	for ((i = 1; i <= count; i++)); do
+		args+=(-o "FakeOption$i=value")
+	done
+
+	sshp -s -x ./assets/cmd/true "${args[@]}" \
+	    command < "$hostfile" >/dev/null 2>&1
+	code=$?
+
+	verify-equal "$want" "$code" "$count repeated -o options code"
+}
+
+verify-remote-argument-count 0 251
+verify-remote-argument-count 0 252
+verify-remote-argument-count 0 253
+verify-remote-argument-count 2 254
+verify-remote-argument-count 2 255
+verify-remote-argument-count 2 256
+
+verify-option-count 0 124
+verify-option-count 0 125
+verify-option-count 0 126
+verify-option-count 2 127
+verify-option-count 2 128
+verify-option-count 2 129
+
+exit 0
