@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# Test that ANSI escape sequences from child output are preserved.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 10, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+mkdir -p tmp
+tmp=./tmp/output.$$
+hex=./tmp/output.$$.hex
+
+cleanup() {
+	rm -f "$tmp" "$hex"
+}
+trap cleanup EXIT
+
+bytes-to-hex() {
+	od -An -v -t x1 "$1" | awk '
+	{
+		for (i = 1; i <= NF; i++) {
+			printf("%s%s", sep, $i);
+			if ($i == "0a") {
+				printf("\n");
+				sep = "";
+			} else {
+				sep = " ";
+			}
+		}
+	}
+	END {
+		if (sep != "") {
+			printf("\n");
+		}
+	}
+	'
+}
+
+singlehost=./assets/hosts/single-host.txt
+expected=./assets/output/ansi-output.hex
+cmd=("$SSHP" -a -c off -x ./assets/cmd/ansi-output arg)
+
+"${cmd[@]}" < "$singlehost" > "$tmp" 2>&1
+code=$?
+bytes-to-hex "$tmp" > "$hex"
+
+verify-equal 0 "$code" "${cmd[*]} code"
+
+echo -n "$bld${cmd[*]} output bytes$rst  match $expected ... "
+if cmp -s "$expected" "$hex"; then
+	echo "${grn}ok$rst"
+else
+	echo "${red}failed!$rst"
+	diff -u "$expected" "$hex"
+	exit 1
+fi
+
+exit 0

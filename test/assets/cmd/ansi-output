@@ -1,0 +1,5 @@
+#!/bin/sh
+
+printf '\033[31mred\033[0m\n'
+printf 'plain \033[1mbold\033[22m text\n'
+printf '\033[36mcyan\033[39m and \033[4munderlined\033[24m\n'
