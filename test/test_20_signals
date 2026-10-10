@@ -61,4 +61,20 @@ for sig in TERM INT; do
 	verify-equal 4 "$code" "${cmd[*]} $sig code"
 done
 
+# ensure closed child output doesn't block sshp from processing
+# https://github.com/bahamas10/sshp/issues/23
+cmd=("$SSHP" -x ./assets/cmd/close-output arg)
+< "$singlehost" "${cmd[@]}" > /dev/null &
+pid=$!
+
+sleep 0.2
+SECONDS=0
+kill -TERM "$pid"
+wait "$pid"
+code=$?
+elapsed=$SECONDS
+
+verify-equal 4 "$code" "${cmd[*]} closed output TERM code"
+verify-equal 0 "$((elapsed >= 2))" "${cmd[*]} prompt termination"
+
 exit 0
