@@ -1233,14 +1233,21 @@ spawn_child_process(Host *host)
 }
 
 /*
- * Register a specific fd to the fdwatcher..
+ * Register a specific fd to the fdwatcher.
  */
 static void
 register_child_process_fd(Host *host, enum PipeType type)
 {
 	FdEvent *fdev = fdev_create(host, type);
 
-	fdwatcher_add(fdw, fdev->fd, fdev);
+	if (fdwatcher_add(fdw, fdev->fd, fdev) == -1) {
+		int error = errno;
+
+		fdev_destroy(fdev);
+
+		errno = error;
+		err(3, "fdwatcher_add");
+	}
 }
 
 /*
