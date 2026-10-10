@@ -1165,7 +1165,8 @@ spawn_child_process(Host *host)
 			err(3, "restore signal mask after fork failure");
 		}
 
-		errc(e, 3, "fork");
+		errno = e;
+		err(3, "fork");
 	}
 
 	// in child
