@@ -55,4 +55,15 @@ code=$?
 verify-equal 1 "$code" "${cmd[*]} code"
 verify-cmd 0 grep -q 'exited: 143 ' "$tmp"
 
+# a failed exec must not flush a copy of the parent's buffered output
+cmd=(sshp -d -x ./assets/cmd/does-not-exist -a arg)
+"${cmd[@]}" < "$singlehost" > "$tmp" 2>&1
+code=$?
+debug_headers=$(grep -c '^\[sshp\] hosts (1):' "$tmp")
+exec_errors=$(grep -c '^sshp: exec:' "$tmp")
+
+verify-equal 1 "$code" "${cmd[*]} code"
+verify-equal 1 "$debug_headers" "${cmd[*]} debug header count"
+verify-equal 1 "$exec_errors" "${cmd[*]} exec error count"
+
 exit 0

@@ -648,6 +648,21 @@ signal_handler(int signum)
 }
 
 /*
+ * `err`-like function that can safely be called by a child process.  This
+ * ensures that no exit handlers are run (as they are inherited from the parent
+ * and will kill all the running children) and also won't flush any cached
+ * output buffers inherited from the parent.
+ *
+ * see: https://github.com/bahamas10/sshp/issues/25
+ */
+static void
+child_err(const char *msg)
+{
+	warn("%s", msg);
+	_exit(3);
+}
+
+/*
  * Process pending signals.
  */
 static void
@@ -687,7 +702,7 @@ reset_signal_handlers(void)
 	if (sigaction(SIGUSR1, &sig, NULL) == -1 ||
 	    sigaction(SIGTERM, &sig, NULL) == -1 ||
 	    sigaction(SIGINT, &sig, NULL) == -1) {
-		err(3, "reset signal handlers");
+		child_err("reset signal handlers");
 	}
 }
 
@@ -1108,6 +1123,8 @@ spawn_child_process(Host *host)
 	int stdio_fd[2];
 	int stdout_fd[2];
 	pid_t pid;
+	sigset_t blocked_signals;
+	sigset_t old_signal_mask;
 
 	// build the ssh command
 	build_ssh_command(host, command, MAX_ARGS);
@@ -1124,10 +1141,31 @@ spawn_child_process(Host *host)
 		make_pipe(stderr_fd);
 	}
 
-	// fork the process
+	/*
+	 * Temporarily block handled signals across fork so the child cannot run
+	 * a handler * inherited from the parent before resetting its signal
+	 * dispositions.
+	 */
+	if (sigemptyset(&blocked_signals) == -1 ||
+	    sigaddset(&blocked_signals, SIGUSR1) == -1 ||
+	    sigaddset(&blocked_signals, SIGTERM) == -1 ||
+	    sigaddset(&blocked_signals, SIGINT) == -1) {
+		err(3, "create signal mask");
+	}
+	if (sigprocmask(SIG_BLOCK, &blocked_signals, &old_signal_mask) == -1) {
+		err(3, "block signals");
+	}
+
+	// fork the process with handled signals blocked
 	pid = fork();
 	if (pid == -1) {
-		err(3, "fork");
+		int e = errno;
+
+		if (sigprocmask(SIG_SETMASK, &old_signal_mask, NULL) == -1) {
+			err(3, "restore signal mask after fork failure");
+		}
+
+		errc(e, 3, "fork");
 	}
 
 	// in child
@@ -1136,6 +1174,9 @@ spawn_child_process(Host *host)
 		int *out_fd;
 
 		reset_signal_handlers();
+		if (sigprocmask(SIG_SETMASK, &old_signal_mask, NULL) == -1) {
+			child_err("restore signal mask");
+		}
 
 		switch (opts.mode) {
 		case MODE_JOIN:
@@ -1149,14 +1190,14 @@ spawn_child_process(Host *host)
 		}
 
 		if (dup2(out_fd[PIPE_WRITE_END], STDOUT_FILENO) == -1) {
-			err(3, "dup2 stdout");
+			child_err("dup2 stdout");
 		}
 		if (dup2(err_fd[PIPE_WRITE_END], STDERR_FILENO) == -1) {
-			err(3, "dup2 stderr");
+			child_err("dup2 stderr");
 		}
 
 		execvp(command[0], command);
-		err(3, "exec");
+		child_err("exec");
 	}
 
 	// in parent
@@ -1179,6 +1220,11 @@ spawn_child_process(Host *host)
 	host->cp->pid = pid;
 	host->cp->started_time = monotonic_time_ms();
 	host->cp->state = CP_STATE_RUNNING;
+
+	// the child is fully registered so the parent can accept signals again
+	if (sigprocmask(SIG_SETMASK, &old_signal_mask, NULL) == -1) {
+		err(3, "restore signal mask");
+	}
 
 	DEBUG("%s%d%s %s%s%s spawned\n",
 	    colors.magenta, host->cp->pid, colors.reset,
