@@ -30,20 +30,20 @@ singlehost='./assets/hosts/single-host.txt'
 
 # ensure that the output is "hello" if -a is specified
 verify-sshp-output 0 "$singlehost" ./assets/output/hello.txt \
-	-x ./assets/cmd/hello -a arg
+    -x ./assets/cmd/hello -a arg
 
 # ensure join mode groups hosts that produce identical output
 verify-sshp-output 0 ./assets/hosts/simple-hosts.txt \
-	./assets/output/join-output.txt -x ./assets/cmd/join-output -j arg
+    ./assets/output/join-output.txt -x ./assets/cmd/join-output -j arg
 
 # ensure output larger than a pipe buffer is not truncated
 # https://github.com/bahamas10/sshp/issues/17
 verify-sshp-lines 0 "$singlehost" 200000 \
-	-x ./assets/cmd/large-output -a arg
+    -x ./assets/cmd/large-output -a arg
 
 # ensure group mode writes the entire output stream
 verify-sshp-lines 0 "$singlehost" 200000 \
-	-x ./assets/cmd/large-output -a -g arg
+    -x ./assets/cmd/large-output -a -g arg
 
 # a child killed by a signal should be an exit code of 1
 # https://github.com/bahamas10/sshp/issues/19

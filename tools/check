@@ -95,9 +95,13 @@ consistent-tabs() {
 	BEGIN {
 		code = 0;
 	}
-	/^( [^*]|\t+ {5})/ {
-		printf("line %4-d: inconsistent tabs\n", NR);
-		code = 1;
+	{
+		if ($0 ~ /^\t* / &&
+		    $0 !~ /^\t* \*/ &&
+		    $0 !~ /^\t* {4}[^[:blank:]]/) {
+			printf("line %4-d: inconsistent tabs\n", NR);
+			code = 1;
+		}
 	}
 	END {
 		exit(code);
