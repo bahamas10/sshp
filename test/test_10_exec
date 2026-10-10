@@ -32,6 +32,10 @@ singlehost='./assets/hosts/single-host.txt'
 verify-sshp-output 0 "$singlehost" ./assets/output/hello.txt \
     -x ./assets/cmd/hello -a arg
 
+# check exact, truncated, empty, and unterminated lines
+verify-sshp-output 0 "$singlehost" ./assets/output/line-boundaries.txt \
+    -a --max-line-length 8 -x ./assets/cmd/line-boundaries arg
+
 # ensure join mode groups hosts that produce identical output
 verify-sshp-output 0 ./assets/hosts/simple-hosts.txt \
     ./assets/output/join-output.txt -x ./assets/cmd/join-output -j arg

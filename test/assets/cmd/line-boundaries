@@ -1,0 +1,6 @@
+#!/bin/sh
+
+printf '12345678\n'
+printf 'abcdefghij\n'
+printf '\n'
+printf 'tail'
