@@ -98,7 +98,7 @@ consistent-tabs() {
 	{
 		if ($0 ~ /^\t* / &&
 		    $0 !~ /^\t* \*/ &&
-		    $0 !~ /^\t* {4}[^[:blank:]]/) {
+		    $0 !~ /^\t*[ ][ ][ ][ ][^[:blank:]]/) {
 			printf("line %4-d: inconsistent tabs\n", NR);
 			code = 1;
 		}
