@@ -1143,7 +1143,7 @@ spawn_child_process(Host *host)
 
 	/*
 	 * Temporarily block handled signals across fork so the child cannot run
-	 * a handler * inherited from the parent before resetting its signal
+	 * a handler inherited from the parent before resetting its signal
 	 * dispositions.
 	 */
 	if (sigemptyset(&blocked_signals) == -1 ||
