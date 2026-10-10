@@ -1217,12 +1217,17 @@ register_child_process_fds(Host *host)
 }
 
 /*
- * Call waitpid on the subprocess associated with the given Host object.  This
- * function will reap the process, set the exit code and remove the pid from
- * the Host object, and optionally print the exited message if opts.exit_codes
- * or opts.debug is set.
+ * Try to reap the subprocess associated with the given Host object without
+ * blocking.  If the process has exited, set its exit code, remove its pid,
+ * optionally print the exited message, and return true.  Return false if the
+ * process is still running.
+ *
+ * Internally we keep track of when to reap a process based on its stdio
+ * closing.  Unfortunately, that means a child could close it's stdio but still
+ * keep running, so we just keep trying to reap it in the main loop between fd
+ * events.
  */
-static void
+static bool
 wait_for_child(Host *host)
 {
 	assert(host != NULL);
@@ -1232,10 +1237,16 @@ wait_for_child(Host *host)
 	int status;
 	pid_t pid;
 
-	// reap the child
-	pid = waitpid(cp->pid, &status, 0);
+	// reap the child without blocking the main loop
+	pid = waitpid(cp->pid, &status, WNOHANG);
+	if (pid == 0) {
+		return false;
+	}
 
 	if (pid < 0) {
+		if (errno == EINTR) {
+			return false;
+		}
 		err(3, "waitpid");
 	}
 
@@ -1280,6 +1291,8 @@ wait_for_child(Host *host)
 		}
 		printf("(%s%ld%s ms)\n", colors.magenta, delta, colors.reset);
 	}
+
+	return true;
 }
 
 /*
@@ -1695,24 +1708,28 @@ main_loop(int num_hosts)
 		// loop fd events
 		for (int i = 0; i < num_events; i++) {
 			FdEvent *fdev = fdevs[i];
-			Host *host = fdev->host;
-
-			assert(host != NULL);
 
 			// read the active fd until it would block or is done
-			bool fd_closed = read_active_fd(fdev);
+			read_active_fd(fdev);
+		}
 
-			// check if the childs stdio is done and reap it
-			if (fd_closed && child_process_stdio_done(host->cp)) {
-				wait_for_child(host);
-				outstanding--;
-				done++;
+		// reap children only after their stdio has been fully consumed
+		for (Host *host = hosts; host != NULL; host = host->next) {
+			ChildProcess *cp = host->cp;
 
-				if (opts.mode == MODE_JOIN && stdout_isatty) {
-					print_progress_line(done, num_hosts);
-					if (done == num_hosts) {
-						printf("\n\n");
-					}
+			if (cp->state != CP_STATE_RUNNING ||
+			    !child_process_stdio_done(cp) ||
+			    !wait_for_child(host)) {
+				continue;
+			}
+
+			outstanding--;
+			done++;
+
+			if (opts.mode == MODE_JOIN && stdout_isatty) {
+				print_progress_line(done, num_hosts);
+				if (done == num_hosts) {
+					printf("\n\n");
 				}
 			}
 		}

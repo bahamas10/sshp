@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# close stderr and stdout immediately then hang around for a bit.
+#
+# we purposefully call sleep as a background task so it *can* be interrupted
+# while stuck in `wait`.
+#
+# https://github.com/bahamas10/sshp/issues/23
+
+exec >/dev/null 2>&1
+
+child=
+cleanup() {
+	if [ -n "$child" ]; then
+		kill "$child" 2>/dev/null
+		wait "$child"
+	fi
+	exit 0
+}
+trap cleanup TERM INT
+
+sleep 3 &
+child=$!
+wait "$child"
