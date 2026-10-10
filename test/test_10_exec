@@ -29,31 +29,21 @@ singlehost='./assets/hosts/single-host.txt'
 < "$singlehost" verify-cmd 1 sshp -x ./assets/cmd/false -g arg
 
 # ensure that the output is "hello" if -a is specified
-cmd=(sshp -x ./assets/cmd/hello -a arg)
-output=$("${cmd[@]}" < "$singlehost")
-code=$?
+verify-sshp-output 0 "$singlehost" ./assets/output/hello.txt \
+	-x ./assets/cmd/hello -a arg
 
-verify-equal 0 "$code" "${cmd[*]} code"
-verify-equal 'hello' "$output" "${cmd[*]} stdout"
+# ensure join mode groups hosts that produce identical output
+verify-sshp-output 0 ./assets/hosts/simple-hosts.txt \
+	./assets/output/join-output.txt -x ./assets/cmd/join-output -j arg
 
 # ensure output larger than a pipe buffer is not truncated
 # https://github.com/bahamas10/sshp/issues/17
-cmd=(sshp -x ./assets/cmd/large-output -a arg)
-"${cmd[@]}" < "$singlehost" > "$tmp"
-code=$?
-lines=$(awk 'END { print NR }' "$tmp")
-
-verify-equal 0 "$code" "${cmd[*]} code"
-verify-equal 200000 "$lines" "${cmd[*]} output lines"
+verify-sshp-lines 0 "$singlehost" 200000 \
+	-x ./assets/cmd/large-output -a arg
 
 # ensure group mode writes the entire output stream
-cmd=(sshp -x ./assets/cmd/large-output -a -g arg)
-"${cmd[@]}" < "$singlehost" > "$tmp"
-code=$?
-lines=$(awk 'END { print NR }' "$tmp")
-
-verify-equal 0 "$code" "${cmd[*]} code"
-verify-equal 200000 "$lines" "${cmd[*]} output lines"
+verify-sshp-lines 0 "$singlehost" 200000 \
+	-x ./assets/cmd/large-output -a -g arg
 
 # a child killed by a signal should be an exit code of 1
 # https://github.com/bahamas10/sshp/issues/19

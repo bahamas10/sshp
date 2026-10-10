@@ -59,6 +59,82 @@ verify-cmd() {
 }
 
 #
+# Verify sshp's exit code and exact output against a file.
+#
+# Usage: verify-sshp-output <code> <input> <output> [sshp args ...]
+#
+verify-sshp-output() {
+	local want=$1
+	local input=$2
+	local expected=$3
+
+	local actual=./tmp/verify-sshp-output.$$
+	local code msg
+
+	shift 3
+	msg="sshp $*"
+	mkdir -p ./tmp
+
+	sshp "$@" < "$input" > "$actual" 2>&1
+	code=$?
+
+	if ! _verify-equal "$want" "$code" "$msg code"; then
+		echo '- program output -'
+		cat "$actual"
+		rm -f "$actual"
+		exit 1
+	fi
+
+	echo -n "$bld$msg output$rst  matches $expected ... "
+	if cmp -s "$expected" "$actual"; then
+		echo "${grn}ok$rst"
+	else
+		echo "${red}failed!$rst"
+		diff -u "$expected" "$actual"
+		rm -f "$actual"
+		exit 1
+	fi
+
+	rm -f "$actual"
+}
+
+#
+# Verify sshp's exit code and number of output lines.
+#
+# Usage: verify-sshp-lines <code> <input> <lines> [sshp args ...]
+#
+verify-sshp-lines() {
+	local want=$1
+	local input=$2
+	local want_lines=$3
+
+	local actual=./tmp/verify-sshp-lines.$$
+	local code have msg
+
+	shift 3
+	msg="sshp $*"
+	mkdir -p ./tmp
+
+	sshp "$@" < "$input" > "$actual" 2>&1
+	code=$?
+	have=$(awk 'END { print NR }' "$actual")
+
+	if ! _verify-equal "$want" "$code" "$msg code"; then
+		echo '- end of program output -'
+		tail -n 20 "$actual"
+		rm -f "$actual"
+		exit 1
+	fi
+
+	if ! _verify-equal "$want_lines" "$have" "$msg output lines"; then
+		rm -f "$actual"
+		exit 1
+	fi
+
+	rm -f "$actual"
+}
+
+#
 # Verify that the first 2 arguments are the same.
 #
 # Usage: verify-equal <want> <have> <message>

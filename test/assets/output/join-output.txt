@@ -1,0 +1,8 @@
+finished with 2 unique results
+
+hosts (2/3): host-1 host-3
+shared output
+
+hosts (1/3): host-2
+different output
+

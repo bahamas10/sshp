@@ -1,0 +1,14 @@
+#!/bin/sh
+
+case "$1" in
+host-1|host-3)
+	echo 'shared output'
+	;;
+host-2)
+	echo 'different output'
+	;;
+*)
+	echo "unexpected host: $1" >&2
+	exit 1
+	;;
+esac
