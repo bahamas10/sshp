@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# Test multiple-host scheduling and the maximum concurrent job limit.
+#
+# This is a wild test.  The tl;dr is: we run `sshp` with an input file of 4
+# hosts and concurrency of 2, each child updates it's state and then blocks
+# reading on a FIFO (created by this test) before exiting.  This allows our test
+# to signal exactly when to exit so we don't have to worry about OS scheduling
+# or race conditions or anything.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 10, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+mkdir -p tmp
+state="$PWD/tmp/concurrency.$$"
+tmp=./tmp/output.$$
+pid=
+
+cleanup() {
+	if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+		kill -TERM "$pid" 2>/dev/null
+		wait "$pid" 2>/dev/null
+	fi
+
+	rm -f "$tmp"
+	if [[ -d $state ]]; then
+		rm -f "$state"/*
+		rmdir "$state"
+	fi
+}
+
+wait-for-start() {
+	local host=$1
+
+	# wait for this file to be created (will be created by the child)
+	while [[ ! -e $state/started-$host ]]; do
+		# check that `sshp` itself hasn't died - otherwise we could get
+		# stuck forever
+		if ! kill -0 "$pid" 2>/dev/null; then
+			wait "$pid"
+			fatal "sshp exited before $host started"
+		fi
+
+		sleep 0.05
+	done
+}
+
+verify-waiting() {
+	local host=$1
+
+	local have
+	if [[ -e $state/started-$host ]]; then
+		have='started'
+	else
+		have='waiting'
+	fi
+	verify-equal 'waiting' "$have" "$host state"
+}
+
+release() {
+	local host=$1
+
+	printf '\n' > "$state/release-$host"
+}
+
+trap cleanup EXIT
+
+mkdir "$state"
+for host in host-{1..4}; do
+	mkfifo "$state/release-$host"
+done
+
+cmd=("$SSHP" -m 2 -x ./assets/cmd/wait-for-release "$state")
+"${cmd[@]}" < ./assets/hosts/concurrency-hosts.txt > "$tmp" 2>&1 &
+pid=$!
+
+# the first two hosts should start while the remaining hosts stay queued.
+wait-for-start host-1
+wait-for-start host-2
+verify-waiting host-3
+verify-waiting host-4
+
+# finishing one job should start exactly one queued host.
+release host-1
+wait-for-start host-3
+verify-waiting host-4
+
+# finishing another job should start the final queued host.
+release host-2
+wait-for-start host-4
+
+# let the remaining children finish and verify the overall result.
+release host-3
+release host-4
+
+wait "$pid"
+code=$?
+pid=
+
+verify-equal 0 "$code" "${cmd[*]} code"
+
+# ensure no output
+bytes=$(wc -c < "$tmp" | tr -d ' ')
+verify-equal 0 "$bytes" "${cmd[*]} output bytes"
+
+exit 0
