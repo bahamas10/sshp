@@ -2,7 +2,31 @@
 
 ## not yet released
 
-- Safer signal handling in the main thread
+## `v1.1.5`
+
+- Add GitHub Actions CI for Linux and macOS.
+- Make signal handling safer and add coverage for `SIGUSR1`, `SIGTERM`, and
+    `SIGINT`.
+- [Issue 17](https://github.com/bahamas10/sshp/issues/17) - prevent child
+    output from being silently truncated.
+- [Issue 19](https://github.com/bahamas10/sshp/issues/19) - correctly report
+    children terminated by signals as failures.
+- [Issue 21](https://github.com/bahamas10/sshp/issues/21) - reject SSH
+    destinations that begin with `-` or contain whitespace or control
+    characters.
+- [Issue 23](https://github.com/bahamas10/sshp/issues/23) - avoid blocking
+    indefinitely when a running child closes its output streams.
+- [Issue 25](https://github.com/bahamas10/sshp/issues/25) - prevent forked
+    children from running inherited signal and exit handlers or flushing
+    inherited output buffers.
+- [PR 27](https://github.com/bahamas10/sshp/pull/27) - handle fd watcher
+    registration errors.
+- Avoid reading uninitialized entries returned by the fd watcher.
+- [PR 28](https://github.com/bahamas10/sshp/pull/28) - reject malformed and
+    out-of-range numeric options.
+- [PR 29](https://github.com/bahamas10/sshp/pull/29) - retry interrupted and
+    partial writes in group mode.
+- Refresh the README, man page, and screenshots.
 
 ## `v1.1.4`
 

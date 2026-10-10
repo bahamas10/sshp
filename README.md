@@ -28,7 +28,7 @@ $ make
 cc -o src/fdwatcher.o -c -D USE_KQUEUE=0 -Wall -Werror -Wextra -Wpedantic -O2 src/fdwatcher.c
 cc -o sshp -Wall -Werror -Wextra -Wpedantic -O2 src/main.c src/fdwatcher.o
 $ ./sshp -v
-v1.1.4
+v1.1.5
 ```
 
 Then optionally run `make install` to install `sshp`:
@@ -40,7 +40,7 @@ mkdir -p /usr/local/man/man1
 cp man/sshp.1 /usr/local/man/man1
 cp sshp /usr/local/bin
 $ sshp -v
-v1.1.4
+v1.1.5
 ```
 
 If you use Arch Linux, you can instead use the AUR package
@@ -156,7 +156,7 @@ used to capture this output.
 ``` console
 $ sshp -h
         _
-  _____| |_  _ __     Parallel SSH Executor (v1.1.4)
+  _____| |_  _ __     Parallel SSH Executor (v1.1.5)
  (_-<_-< ' \| '_ \    Source: https://github.com/bahamas10/sshp
  /__/__/_||_| .__/    Compiled: Oct  9 2026 00:54:42 (using kqueue)
             |_|       MIT License
