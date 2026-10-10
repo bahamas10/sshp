@@ -136,7 +136,7 @@ fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 	}
 
 	num_events = kevent(fdw->kq, NULL, 0, kq_events, nevents, tsp);
-	for (int i = 0; i < nevents; i++) {
+	for (int i = 0; i < num_events; i++) {
 		struct kevent ev = kq_events[i];
 		events[i] = ev.udata;
 	}
@@ -144,7 +144,7 @@ fdwatcher_wait(FdWatcher *fdw, void **events, int nevents, int timeout)
 	struct epoll_event ep_events[nevents];
 
 	num_events = epoll_wait(fdw->epoll_fd, ep_events, nevents, timeout);
-	for (int i = 0; i < nevents; i++) {
+	for (int i = 0; i < num_events; i++) {
 		struct epoll_event ev = ep_events[i];
 		events[i] = ev.data.ptr;
 	}
