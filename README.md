@@ -277,9 +277,10 @@ checking:  man/sshp.md
 
 The style check is *very* simple.  It ensures:
 
-1. No line exceeds 80 columns.
-2. No consecutive blank lines.
-3. Consistent use of tabs and spaces.
+- No lines are over 80 characters.
+- No 2 or more consecutive newlines.
+- No trailing spaces or tabs.
+- Consistent use of tabs and spaces.
 
 Comparison to Node.js `sshp`
 ----------------------------
