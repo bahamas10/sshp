@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-and-test:
+    name: Test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -32,3 +33,22 @@ jobs:
 
       - name: Check style
         run: make check
+
+  illumos:
+    name: Test (illumos, OmniOS r151058)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Build and test in OmniOS
+        uses: vmactions/omnios-vm@v1
+        with:
+          # Comes with build-essential, for the linker and C compiler.
+          release: r151058-build
+          copyback: false
+          run: |
+            make
+            make check
+            make test
