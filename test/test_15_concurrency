@@ -19,7 +19,7 @@
 . ./lib/helpers || exit 1
 
 mkdir -p tmp
-state="$PWD/tmp/concurrency.$$"
+state="./tmp/concurrency.$$"
 tmp=./tmp/output.$$
 pid=
 
@@ -36,22 +36,6 @@ cleanup() {
 	fi
 }
 
-wait-for-start() {
-	local host=$1
-
-	# wait for this file to be created (will be created by the child)
-	while [[ ! -e $state/started-$host ]]; do
-		# check that `sshp` itself hasn't died - otherwise we could get
-		# stuck forever
-		if ! kill -0 "$pid" 2>/dev/null; then
-			wait "$pid"
-			fatal "sshp exited before $host started"
-		fi
-
-		sleep 0.05
-	done
-}
-
 verify-waiting() {
 	local host=$1
 
@@ -62,12 +46,6 @@ verify-waiting() {
 		have='waiting'
 	fi
 	verify-equal 'waiting' "$have" "$host state"
-}
-
-release() {
-	local host=$1
-
-	printf '\n' > "$state/release-$host"
 }
 
 trap cleanup EXIT
@@ -82,23 +60,27 @@ cmd=("$SSHP" -m 2 -x ./assets/cmd/wait-for-release "$state")
 pid=$!
 
 # the first two hosts should start while the remaining hosts stay queued.
-wait-for-start host-1
-wait-for-start host-2
+wait-for-condition "$pid" 'host-1 to start' \
+    test -e "$state/started-host-1"
+wait-for-condition "$pid" 'host-2 to start' \
+    test -e "$state/started-host-2"
 verify-waiting host-3
 verify-waiting host-4
 
 # finishing one job should start exactly one queued host.
-release host-1
-wait-for-start host-3
+release-gate "$state/release-host-1"
+wait-for-condition "$pid" 'host-3 to start' \
+    test -e "$state/started-host-3"
 verify-waiting host-4
 
 # finishing another job should start the final queued host.
-release host-2
-wait-for-start host-4
+release-gate "$state/release-host-2"
+wait-for-condition "$pid" 'host-4 to start' \
+    test -e "$state/started-host-4"
 
 # let the remaining children finish and verify the overall result.
-release host-3
-release host-4
+release-gate "$state/release-host-3"
+release-gate "$state/release-host-4"
 
 wait "$pid"
 code=$?

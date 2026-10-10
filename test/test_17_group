@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# Test group-mode output formatting and host switching.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 10, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+mkdir -p tmp
+state="./tmp/group.$$"
+tmp=./tmp/output.$$
+pid=
+
+cleanup() {
+	if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
+		kill -TERM "$pid" 2>/dev/null
+		wait "$pid" 2>/dev/null
+	fi
+
+	rm -f "$tmp"
+	if [[ -d $state ]]; then
+		rm -f "$state"/*
+		rmdir "$state"
+	fi
+}
+
+trap cleanup EXIT
+
+mkdir "$state"
+for gate in host-1-{1,2} host-2-{1,2,3}; do
+	mkfifo "$state/release-$gate"
+done
+
+cmd=("$SSHP" -g -x ./assets/cmd/group-output "$state")
+"${cmd[@]}" < ./assets/hosts/group-hosts.txt > "$tmp" 2>&1 &
+pid=$!
+
+# alternate hosts and split host-2's first line across its stdout and stderr
+# streams.
+release-gate "$state/release-host-1-1"
+wait-for-condition "$pid" 'host-1 output' \
+    grep -Fq 'host-1 stdout' "$tmp"
+
+release-gate "$state/release-host-2-1"
+wait-for-condition "$pid" 'host-2 stdout' \
+    grep -Fq 'host-2 stdout' "$tmp"
+
+release-gate "$state/release-host-2-2"
+wait-for-condition "$pid" 'host-2 stderr' \
+    grep -Fq ' and stderr' "$tmp"
+
+release-gate "$state/release-host-1-2"
+wait-for-condition "$pid" 'remaining host-1 output' \
+    grep -Fq 'host-1 again' "$tmp"
+
+# the final output intentionally has no newline - group mode should add one.
+release-gate "$state/release-host-2-3"
+
+wait "$pid"
+code=$?
+pid=
+
+verify-equal 0 "$code" "${cmd[*]} code"
+
+have='./assets/output/group-output.txt'
+echo -n "$bld${cmd[*]} output$rst  matches $have ... "
+if cmp -s "$have" "$tmp"; then
+	echo "${grn}ok$rst"
+else
+	echo "${red}failed!$rst"
+	diff -u "$have" "$tmp"
+	exit 1
+fi
+
+exit 0

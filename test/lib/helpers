@@ -25,6 +25,38 @@ fatal() {
 }
 
 #
+# Wait for a condition while ensuring a background process remains alive.
+#
+# Usage: wait-for-condition <pid> <msg> <cmd> [args ...]
+#
+wait-for-condition() {
+	local pid=$1
+	local msg=$2
+	local code
+
+	shift 2
+
+	while ! "$@"; do
+		if ! kill -0 "$pid" 2>/dev/null; then
+			wait "$pid"
+			code=$?
+			fatal "process exited with code $code while waiting for $msg"
+		fi
+
+		sleep 0.05
+	done
+}
+
+#
+# Release a process blocked reading from a FIFO.
+#
+# Usage: release-gate <fifo>
+#
+release-gate() {
+	printf '\n' > "$1"
+}
+
+#
 # sshp wrapper to call the compiled version.
 #
 sshp() {

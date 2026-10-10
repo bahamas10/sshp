@@ -23,4 +23,10 @@ for f in "$@"; do
 	echo
 done
 
+if ((ret == 0)); then
+	echo "all tests passed ${grn}succesfully${rst}"
+else
+	echo "${red}errors detected${rst}"
+fi
+
 exit "$ret"

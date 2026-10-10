@@ -1,0 +1,28 @@
+#!/bin/sh
+
+host=$1
+state=$2
+
+case "$host" in
+host-1)
+	IFS= read -r _ < "$state/release-host-1-1"
+	printf 'host-1 stdout'
+
+	IFS= read -r _ < "$state/release-host-1-2"
+	printf 'host-1 again\n'
+	;;
+host-2)
+	IFS= read -r _ < "$state/release-host-2-1"
+	printf 'host-2 stdout'
+
+	IFS= read -r _ < "$state/release-host-2-2"
+	printf ' and stderr\n' >&2
+
+	IFS= read -r _ < "$state/release-host-2-3"
+	printf 'host-2 final'
+	;;
+*)
+	echo "unexpected host: $host" >&2
+	exit 1
+	;;
+esac

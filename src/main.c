@@ -1544,6 +1544,18 @@ fd_done_group(FdEvent *fdev)
 }
 
 /*
+ * Finish group mode output with a newline when needed.
+ */
+static void
+finish_group_mode(void)
+{
+	if (!newline_printed) {
+		printf("\n");
+		newline_printed = true;
+	}
+}
+
+/*
  * Called by read_active_fd when finishing an fd in join mode.
  */
 static void
@@ -2191,6 +2203,9 @@ main(int argc, char **argv)
 
 		// finish up
 		switch (opts.mode) {
+		case MODE_GROUP:
+			finish_group_mode();
+			break;
 		case MODE_JOIN:
 			finish_join_mode(num_hosts);
 			break;
