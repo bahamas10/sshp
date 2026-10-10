@@ -49,6 +49,6 @@ jobs:
           release: r151058-build
           copyback: false
           run: |
-            make
-            make check
-            make test
+            gmake
+            gmake check
+            gmake test
