@@ -4,6 +4,7 @@
 #
 # - No lines are over 80 characters.
 # - No 2 or more consecutive newlines.
+# - No trailing spaces or tabs.
 # - Consistent use of tabs and spaces.
 #
 # Author: Dave Eddy <dave@daveeddy.com>
@@ -11,10 +12,15 @@
 # License: MIT
 
 # colors
-[[ -t 1 ]] || tput() { true; }
-red=$(tput setaf 1)
-bld=$(tput bold)
-rst=$(tput sgr0)
+if [[ -t 1 ]]; then
+	red=$'\e[31m'
+	bld=$'\e[1m'
+	rst=$'\e[0m'
+else
+	red=
+	bld=
+	rst=
+fi
 
 # exit code
 exitcode=0
@@ -29,7 +35,7 @@ exceeds-line-length() {
 		code = 0;
 	}
 	length($0) > cols {
-		printf("%4-d %s\n", NR, $0);
+		printf("line %4-d: over %d columns\n", NR, cols);
 		code = 1;
 	}
 	END {
@@ -50,12 +56,30 @@ blank-lines() {
 	/^$/ {
 		newlines++;
 		if (newlines == 2) {
-			printf("%-4d extra newline(s)\n", NR);
+			printf("line %-4d: extra newline(s)\n", NR);
 			code = 1;
 		}
 	}
 	/^.+$/ {
 		newlines = 0;
+	}
+	END {
+		exit(code);
+	}
+	' "$file"
+}
+
+# check for trailing whitespace
+trailing-whitespace() {
+	local file=$1
+
+	awk '
+	BEGIN {
+		code = 0;
+	}
+	/[[:blank:]]+$/ {
+		printf("line %4-d: trailing whitespace\n", NR);
+		code = 1;
 	}
 	END {
 		exit(code);
@@ -72,7 +96,7 @@ consistent-tabs() {
 		code = 0;
 	}
 	/^( [^*]|\t+ {5})/ {
-		printf("%4-d inconsistent tabs\n", NR);
+		printf("line %4-d: inconsistent tabs\n", NR);
 		code = 1;
 	}
 	END {
@@ -95,8 +119,7 @@ run-test() {
 
 	if ! output=$("$test" "$file" 2>&1); then
 		exitcode=1
-		echo
-		echo "${red}error:  $msg$rst"
+		echo "${red}error${rst}"
 		echo "$output"
 		echo
 	fi
@@ -106,16 +129,16 @@ run-test() {
 for f in "$@"; do
 	[[ -d $f ]] && continue
 
-	ext=${f##*.}
-
 	echo "${bld}checking:$rst  $f"
 
-	run-test blank-lines         "$f" 'consective blank lines'
-	run-test exceeds-line-length "$f" 'lines over 80 columns'
+	run-test blank-lines "$f"
+	run-test exceeds-line-length "$f"
+	run-test trailing-whitespace "$f"
 
 	# markdown files get a pass from tab/space checks - they are wild
+	ext=${f##*.}
 	if [[ $ext != md ]]; then
-		run-test consistent-tabs "$f" 'bad tab usage'
+		run-test consistent-tabs "$f"
 	fi
 done
 
