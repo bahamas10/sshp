@@ -46,6 +46,15 @@ lines=$(awk 'END { print NR }' "$tmp")
 verify-equal 0 "$code" "${cmd[*]} code"
 verify-equal 200000 "$lines" "${cmd[*]} output lines"
 
+# ensure group mode writes the entire output stream
+cmd=(sshp -x ./assets/cmd/large-output -a -g arg)
+"${cmd[@]}" < "$singlehost" > "$tmp"
+code=$?
+lines=$(awk 'END { print NR }' "$tmp")
+
+verify-equal 0 "$code" "${cmd[*]} code"
+verify-equal 200000 "$lines" "${cmd[*]} output lines"
+
 # a child killed by a signal should be an exit code of 1
 # https://github.com/bahamas10/sshp/issues/19
 cmd=(sshp -x ./assets/cmd/sigterm -e arg)
