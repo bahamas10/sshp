@@ -34,6 +34,27 @@ jobs:
       - name: Check style
         run: make check
 
+  freebsd:
+    name: Test (FreeBSD 15.1)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Build and test in FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          usesh: true
+          copyback: false
+          prepare: |
+            pkg install -y bash gmake
+          run: |
+            gmake
+            gmake check
+            gmake test
+
   illumos:
     name: Test (illumos, OmniOS r151058)
     runs-on: ubuntu-latest
