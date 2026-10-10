@@ -8,6 +8,8 @@
 
 . ./lib/helpers || exit 1
 
+hostfile='./assets/hosts/simple-hosts.txt'
+
 # -v should just exit 0
 verify-cmd 0 sshp -v
 
@@ -27,15 +29,29 @@ verify-cmd 2 sshp -f ./assets/hosts/empty-hosts.txt cmd
 
 # invalid max parallelism
 verify-cmd 2 sshp -m
-verify-cmd 2 sshp -m 0
-verify-cmd 2 sshp -m foo
-verify-cmd 2 sshp -m -17
+verify-cmd 2 sshp -n -f "$hostfile" -m 0 cmd
+verify-cmd 2 sshp -n -f "$hostfile" -m foo cmd
+verify-cmd 2 sshp -n -f "$hostfile" -m 2oops cmd
+verify-cmd 2 sshp -n -f "$hostfile" -m -17 cmd
+verify-cmd 2 sshp -n -f "$hostfile" \
+	-m 999999999999999999999999999999999999999999999999999 cmd
+
+# invalid output limits
+verify-cmd 2 sshp -n -f "$hostfile" --max-line-length 12oops cmd
+verify-cmd 2 sshp -n -f "$hostfile" --max-line-length 0 cmd
+verify-cmd 2 sshp -n -f "$hostfile" --max-line-length 2147483647 cmd
+verify-cmd 2 sshp -n -f "$hostfile" \
+	--max-line-length 999999999999999999999999999999999999999 cmd
+verify-cmd 2 sshp -n -f "$hostfile" --max-output-length 12oops cmd
+verify-cmd 2 sshp -n -f "$hostfile" --max-output-length 0 cmd
+verify-cmd 2 sshp -n -f "$hostfile" --max-output-length 2147483647 cmd
+verify-cmd 2 sshp -n -f "$hostfile" \
+	--max-output-length 999999999999999999999999999999999999999 cmd
 
 # invalid mode combinations
 verify-cmd 2 sshp -g -j
 
 # do a dry run
-hostfile='./assets/hosts/simple-hosts.txt'
 verify-cmd 0 sshp -n -f "$hostfile" cmd
 verify-cmd 0 sshp -n -f - cmd < "$hostfile"
 verify-cmd 0 sshp -n cmd < "$hostfile"

@@ -1861,6 +1861,30 @@ next:
 }
 
 /*
+ * Parse a positive integer option, rejecting partial values and overflow.
+ */
+static int
+parse_positive_int(const char *value, const char *opt, int max)
+{
+	char *end;
+	long parsed;
+
+	assert(value != NULL);
+	assert(opt != NULL);
+	assert(max > 0);
+
+	errno = 0;
+	parsed = strtol(value, &end, 10);
+
+	if (errno == ERANGE || end == value || *end != '\0' ||
+	    parsed < 1 || parsed > max) {
+		errx(2, "invalid value for `%s`: '%s'", opt, value);
+	}
+
+	return (int)parsed;
+}
+
+/*
  * Parse command line arguments
  */
 static void
@@ -1874,8 +1898,14 @@ parse_arguments(int argc, char **argv)
 	while ((opt = getopt_long(argc, argv, short_options, long_options,
 	    NULL)) != -1) {
 		switch (opt) {
-		case 1000: opts.max_line_length = atoi(optarg); break;
-		case 1001: opts.max_output_length = atoi(optarg); break;
+		case 1000:
+			opts.max_line_length = parse_positive_int(optarg,
+			    "--max-line-length", INT_MAX - 2);
+			break;
+		case 1001:
+			opts.max_output_length = parse_positive_int(optarg,
+			    "--max-output-length", INT_MAX - 1);
+			break;
 		case 'a': opts.anonymous = true; break;
 		case 'c': opts.color = optarg; break;
 		case 'd': opts.debug = true; break;
@@ -1886,7 +1916,10 @@ parse_arguments(int argc, char **argv)
 		case 'i': opts.identity = optarg; break;
 		case 'j': opts.join = true; break;
 		case 'l': opts.login = optarg; break;
-		case 'm': opts.max_jobs = atoi(optarg); break;
+		case 'm':
+			opts.max_jobs = parse_positive_int(optarg,
+			    "-m", INT_MAX);
+			break;
 		case 'n': opts.dry_run = true; break;
 		case 'o': push_arguments("-o", optarg, NULL); break;
 		case 'p': opts.port = optarg; break;
@@ -1902,9 +1935,6 @@ parse_arguments(int argc, char **argv)
 	argv += optind;
 
 	// sanity check options
-	if (opts.max_jobs < 1) {
-		errx(2, "invalid value for `-m`: '%d'", opts.max_jobs);
-	}
 	if (opts.join && opts.group) {
 		errx(2, "`-j` and `-g` are mutually exclusive");
 	}
@@ -1914,15 +1944,6 @@ parse_arguments(int argc, char **argv)
 	if (opts.join && opts.anonymous) {
 		errx(2, "`-j` and `-a` are mutually exclusive");
 	}
-	if (opts.max_line_length <= 0) {
-		errx(2, "invalid value for `--max-line-length`: %d",
-		    opts.max_line_length);
-	}
-	if (opts.max_output_length <= 0) {
-		errx(2, "invalid value for `--max-output-length`: %d",
-		    opts.max_output_length);
-	}
-
 	// set current sshp mode
 	assert(!(opts.join && opts.group));
 	if (opts.join) {
