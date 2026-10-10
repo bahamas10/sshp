@@ -738,6 +738,36 @@ safe_malloc(size_t size, const char *msg)
 }
 
 /*
+ * Write an entire buffer, retrying interrupted and partial writes, exiting on
+ * failure.
+ */
+static void
+write_all(int fd, const void *buf, size_t size)
+{
+	const char *p = buf;
+
+	while (size > 0) {
+		ssize_t n = write(fd, p, size);
+
+		if (n > 0) {
+			p += n;
+			size -= n;
+			continue;
+		}
+
+		if (n == -1 && errno == EINTR) {
+			continue;
+		}
+
+		if (n == 0) {
+			errx(3, "write returned zero");
+		}
+
+		err(3, "write");
+	}
+}
+
+/*
  * Create a ChildProcess object.
  */
 static ChildProcess *
@@ -1439,9 +1469,7 @@ process_data_group(FdEvent *fdev, char *buf, int bytes)
 	// write the fd data to stdout
 	printf("%s", fdev_get_color(fdev));
 	fflush(stdout);
-	if (write(STDOUT_FILENO, buf, bytes) < bytes) {
-		err(3, "write failed");
-	}
+	write_all(STDOUT_FILENO, buf, bytes);
 	printf("%s", colors.reset);
 
 	// check if a newline was printed, save the last host
