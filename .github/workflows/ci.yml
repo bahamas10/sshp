@@ -37,6 +37,7 @@ jobs:
   freebsd:
     name: Test (FreeBSD 15.1)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out the repository
@@ -58,6 +59,7 @@ jobs:
   illumos:
     name: Test (illumos, OmniOS r151058)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out the repository
