@@ -53,4 +53,15 @@ bytes-to-hex "$tmp" > "$hex"
 verify-equal 0 "$code" "${cmd[*]} code"
 verify-files-equal "$expected" "$hex" "${cmd[*]} output bytes"
 
+# explicit color should add sshp's green stdout and reset sequences.
+expected=./assets/output/color-output.hex
+cmd=("$SSHP" -a -c on -x ./assets/cmd/hello arg)
+
+"${cmd[@]}" < "$singlehost" > "$tmp" 2>&1
+code=$?
+bytes-to-hex "$tmp" > "$hex"
+
+verify-equal 0 "$code" "${cmd[*]} code"
+verify-files-equal "$expected" "$hex" "${cmd[*]} output bytes"
+
 exit 0
