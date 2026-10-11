@@ -3,6 +3,12 @@ CFLAGS ?= -Wall -Werror -Wextra -Wpedantic -O2
 PREFIX ?= /usr/local
 UNAME := $(shell uname -s)
 
+# compile all programs used for testing
+# test/assets/src/foo.c -> test/tmp/cmd/foo
+TEST_FIXTURE_DIR := test/tmp/cmd
+TEST_FIXTURE_SOURCES := $(wildcard test/assets/src/*.c)
+TEST_FIXTURES := $(patsubst test/assets/src/%.c,$(TEST_FIXTURE_DIR)/%,$(TEST_FIXTURE_SOURCES))
+
 ifeq ($(UNAME),Darwin)
 	USE_KQUEUE ?= 1
 else ifeq ($(UNAME),FreeBSD)
@@ -32,6 +38,7 @@ all: sshp man
 clean:
 	rm -f sshp
 	rm -f src/*.o
+	rm -f $(TEST_FIXTURES)
 
 .PHONY: clean-man
 clean-man:
@@ -41,13 +48,21 @@ clean-man:
 clean-all: clean clean-man
 
 # test targets
+.PHONY: test-fixtures
+test-fixtures: $(TEST_FIXTURES)
+
+$(TEST_FIXTURE_DIR)/%: test/assets/src/%.c
+	mkdir -p $(@D)
+	$(CC) -o $@ $(CFLAGS) $<
+
 .PHONY: test
-test: sshp
+test: sshp test-fixtures
 	cd test && ./runtest test_*
 
 .PHONY: check
 check:
-	./tools/check src/*.h src/*.c test/* test/assets/cmd/* man/*.md
+	./tools/check src/*.h src/*.c test/* test/assets/cmd/* \
+	    test/assets/src/* man/*.md
 
 # install/uninstall targets
 .PHONY: install

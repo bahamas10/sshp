@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# Test that child processes receive /dev/null as stdin.
+#
+# # Created
+# Author: Dave Eddy <ysap@daveeddy.com>
+# Date: October 10, 2026
+# License: MIT
+#
+# # Contributors
+# - Dave Eddy <ysap@daveeddy.com>
+
+. ./lib/helpers || exit 1
+
+hostfile=./assets/hosts/single-host.txt
+expected=./assets/output/stdin-eof.txt
+
+mkdir -p tmp
+tmp=./tmp/output.$$
+
+cleanup() {
+	rm -f "$tmp"
+}
+
+trap cleanup EXIT
+
+stdin_status=./tmp/cmd/stdin-status
+if [[ ! -x $stdin_status ]]; then
+	fatal "missing fixture: $stdin_status - run 'make test'"
+fi
+
+# pass a host file with `-f` and ensure the child process can't read any stdin
+# (should be /dev/null)
+verify-sshp-output 0 ./assets/input/stdin-sentinel.txt "$expected" \
+    -a -f "$hostfile" -x "$stdin_status" arg
+
+# if fd 0 starts closed, open("/dev/null") inside `sshp` may itself return fd 0
+# - ensure sshp leaves that descriptor open rather than closing it after dup2.
+# https://github.com/bahamas10/sshp/issues/32
+cmd=("$SSHP" -a -f "$hostfile" -x "$stdin_status" arg)
+"${cmd[@]}" <&- > "$tmp" 2>&1
+code=$?
+
+verify-equal 0 "$code" "${cmd[*]} with closed stdin code"
+verify-files-equal "$expected" "$tmp" \
+    "${cmd[*]} with closed stdin output"
+
+exit 0
