@@ -57,7 +57,7 @@ $ sshp -v
 v1.1.5
 ```
 
-> [NOTE!]
+> [!NOTE]
 > `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
 > been tested on Linux, illumos, macOS, and FreeBSD.
 
