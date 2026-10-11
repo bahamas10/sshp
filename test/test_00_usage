@@ -50,6 +50,13 @@ verify-cmd 2 sshp -n -f "$hostfile" \
 
 # invalid mode combinations
 verify-cmd 2 sshp -g -j
+verify-cmd 2 sshp -j -s
+verify-cmd 2 sshp -j -a
+
+# invalid color mode
+verify-cmd 2 sshp -c invalid cmd
+verify-cmd 2 sshp --color invalid cmd
+verify-cmd 2 sshp --color foo cmd
 
 # do a dry run
 verify-cmd 0 sshp -n -f "$hostfile" cmd
