@@ -11,12 +11,12 @@ ret=0
 for f in "$@"; do
 	[[ ${f:0:1} == '/' ]] || f=./$f
 
-	echo "${bld}running:$rst  $f"
+	echo "${bld}running:${rst}  $f"
 
 	if ! "$f"; then
 		ret=1
 		echo
-		echo "${red}error:  $f"
+		echo "${red}error:  $f${rst}"
 		echo
 	fi
 
