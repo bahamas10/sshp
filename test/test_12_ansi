@@ -51,14 +51,6 @@ code=$?
 bytes-to-hex "$tmp" > "$hex"
 
 verify-equal 0 "$code" "${cmd[*]} code"
-
-echo -n "$bld${cmd[*]} output bytes$rst  match $expected ... "
-if cmp -s "$expected" "$hex"; then
-	echo "${grn}ok$rst"
-else
-	echo "${red}failed!$rst"
-	diff -u "$expected" "$hex"
-	exit 1
-fi
+verify-files-equal "$expected" "$hex" "${cmd[*]} output bytes"
 
 exit 0

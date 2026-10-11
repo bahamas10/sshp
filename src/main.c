@@ -2133,7 +2133,9 @@ main(int argc, char **argv)
 	if (dup2(dev_null_fd, STDIN_FILENO) == -1) {
 		err(3, "dup2 /dev/null stdin");
 	}
-	close(dev_null_fd);
+	if (dev_null_fd != STDIN_FILENO) {
+		close(dev_null_fd);
+	}
 
 	// create shared fdwatcher instance
 	fdw = fdwatcher_create();

@@ -68,14 +68,7 @@ pid=
 
 verify-equal 0 "$code" "${cmd[*]} code"
 
-have='./assets/output/group-output.txt'
-echo -n "$bld${cmd[*]} output$rst  matches $have ... "
-if cmp -s "$have" "$tmp"; then
-	echo "${grn}ok$rst"
-else
-	echo "${red}failed!$rst"
-	diff -u "$have" "$tmp"
-	exit 1
-fi
+expected=./assets/output/group-output.txt
+verify-files-equal "$expected" "$tmp" "${cmd[*]} output"
 
 exit 0

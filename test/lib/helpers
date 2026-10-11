@@ -91,6 +91,36 @@ verify-cmd() {
 }
 
 #
+# Verify that two files are the same
+#
+# Usage: verify-files-equal <expected> <actual> <message>
+#
+verify-files-equal() {
+	_verify-files-equal "$@" || exit 1
+}
+
+#
+# Same as above but doesn't exit the program
+#
+# Usage: same as verify-files-equal
+#
+_verify-files-equal() {
+	local expected=$1
+	local actual=$2
+	local msg=$3
+
+	echo -n "$bld$msg$rst  matches $expected ... "
+	if cmp -s "$expected" "$actual"; then
+		echo "${grn}ok$rst"
+		return 0
+	fi
+
+	echo "${red}failed!$rst"
+	diff -u "$expected" "$actual"
+	return 1
+}
+
+#
 # Verify sshp's exit code and exact output against a file.
 #
 # Usage: verify-sshp-output <code> <input> <output> [sshp args ...]
@@ -117,12 +147,7 @@ verify-sshp-output() {
 		exit 1
 	fi
 
-	echo -n "$bld$msg output$rst  matches $expected ... "
-	if cmp -s "$expected" "$actual"; then
-		echo "${grn}ok$rst"
-	else
-		echo "${red}failed!$rst"
-		diff -u "$expected" "$actual"
+	if ! _verify-files-equal "$expected" "$actual" "$msg output"; then
 		rm -f "$actual"
 		exit 1
 	fi
