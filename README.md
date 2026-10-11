@@ -21,6 +21,21 @@ streams of the child line-by-line to stdout of `sshp` itself.
 Installation
 ------------
 
+### macOS / Homebrew
+
+Install with [Homebrew](https://brew.sh/):
+
+``` console
+$ brew install bahamas10/tap/sshp
+```
+
+### Arch Linux / AUR
+
+[sshp](https://aur.archlinux.org/packages/sshp) or
+[sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
+
+### Source Install
+
 Pull the source code and run `make` to compile `sshp`:
 
 ``` console
@@ -35,20 +50,16 @@ Then optionally run `make install` to install `sshp`:
 
 ``` console
 $ sudo make install
-mkdir -p /usr/local/bin
-mkdir -p /usr/local/man/man1
+...
 cp man/sshp.1 /usr/local/man/man1
 cp sshp /usr/local/bin
 $ sshp -v
 v1.1.5
 ```
 
-If you use Arch Linux, you can instead use the AUR package
-[sshp](https://aur.archlinux.org/packages/sshp) or
-[sshp-git](https://aur.archlinux.org/packages/sshp-git) to compile and install.
-
-Note: `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
-been tested on Linux, illumos, macOS, and FreeBSD.
+> [NOTE!]
+> `sshp` requires a kernel that supports `epoll` or `kqueue` to run.  This has
+> been tested on Linux, illumos, macOS, and FreeBSD.
 
 About
 -----
