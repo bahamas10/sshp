@@ -61,7 +61,7 @@ test: sshp test-fixtures
 
 .PHONY: check
 check:
-	./tools/check src/*.h src/*.c test/* test/assets/cmd/* \
+	./tools/style-check src/*.h src/*.c test/* test/assets/cmd/* \
 	    test/assets/src/* man/*.md
 
 # install/uninstall targets
